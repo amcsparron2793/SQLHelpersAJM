@@ -1,0 +1,7 @@
+__pycache__
+/logs/
+/.idea/
+/venv/
+/dist/
+/*.egg-info/
+*.db
