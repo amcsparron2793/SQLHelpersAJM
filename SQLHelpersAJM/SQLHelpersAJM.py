@@ -10,8 +10,8 @@ from logging import basicConfig
 from typing import Optional, List
 import logging
 
-from _backend import deprecated, _NoCursorInitializedError
-from _version import __version__
+from SQLHelpersAJM._backend import deprecated, _NoCursorInitializedError
+from SQLHelpersAJM._version import __version__
 
 
 class _BaseSQLHelper:
