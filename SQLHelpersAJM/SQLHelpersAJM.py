@@ -10,7 +10,7 @@ from logging import basicConfig
 from typing import Optional, List
 import logging
 
-from _backend import deprecated, _NoCursorInitializedError
+from _backend import deprecated, _NoCursorInitializedError, _NoResultsToConvertError
 from _version import __version__
 
 
@@ -189,8 +189,7 @@ class _BaseSQLHelper:
                 final_list_dict.append(dict(ChainMap(*row_list_dict)))
                 row_list_dict.clear()
             else:
-                raise AttributeError("A query has not been executed, "
-                                     "please execute a query before calling this function.")
+                raise _NoResultsToConvertError()
         if len(final_list_dict) > 0:
             # this returns a sorted list dict instead of an unsorted list dict
             return [dict(sorted(x.items())) for x in final_list_dict]
