@@ -10,8 +10,8 @@ from logging import basicConfig
 from typing import Optional, List
 import logging
 
-from SQLHelpersAJM._backend import deprecated, _NoCursorInitializedError
-from SQLHelpersAJM._version import __version__
+from _backend import deprecated, _NoCursorInitializedError
+from _version import __version__
 
 
 class _BaseSQLHelper:
@@ -80,8 +80,7 @@ class _BaseSQLHelper:
         """
         if not self.is_ready_for_query:
             try:
-                raise _NoCursorInitializedError("Cursor has not been initialized yet, "
-                                                "run get_connection_and_cursor before querying")
+                raise _NoCursorInitializedError()
             except _NoCursorInitializedError as e:
                 self._logger.error(e, exc_info=True)
                 raise e

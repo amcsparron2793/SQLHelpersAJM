@@ -24,4 +24,9 @@ def deprecated(reason: str = ""):
 
 
 class _NoCursorInitializedError(Exception):
-    ...
+    DEFAULT_MESSAGE = "Cursor has not been initialized yet, run get_connection_and_cursor before querying"
+
+    def __init__(self, msg: str = None):
+        if not msg:
+            msg = _NoCursorInitializedError.DEFAULT_MESSAGE
+        super().__init__(msg)

@@ -39,7 +39,7 @@ class SQLlite3Helper(_BaseSQLHelper):
 
 if __name__ == "__main__":
     sql = SQLlite3Helper(db_file_path=r"C:\Users\amcsparron\Desktop\Python_Projects\SQLHelpersAJM\Misc_Project_Files\test_db.db")
-    sql.get_connection_and_cursor()
+    #sql.get_connection_and_cursor()
     #sql.query("drop table test_table;", is_commit=True)
     #sql.query("create table test_table (id integer primary key autoincrement, name varchar(255), age integer);", is_commit=True)
     #sql.query("insert into test_table(name, age) VALUES ('andrew', 32) returning id;", is_commit=True)

@@ -1,3 +1,6 @@
+# pylint: disable=line-too-long
+# pylint: disable=import-error
+
 import logging
 from typing import Optional, List
 import pyodbc
@@ -185,4 +188,4 @@ class SQLServerHelper(_BaseSQLHelper):
 
 
 if __name__ == '__main__':
-    SQLServerHelper.with_connection_string("driver={SQL Server};server=localhost;database=test;trusted_connection=yes")
+    sql = SQLServerHelper.with_connection_string("driver={SQL Server};server=10NE-WTR44;database=AndrewTest;trusted_connection=yes")
