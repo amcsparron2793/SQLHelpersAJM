@@ -84,7 +84,7 @@ class _BaseSQLHelper:
         """
         logger = logging.getLogger(self.__class__.__name__)
         if not logger.hasHandlers():
-            logging.basicConfig(level=kwargs.get('basic_config_level', logging.DEBUG))
+            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
         return logger
 
     @property
