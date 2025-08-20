@@ -124,7 +124,7 @@ class SQLServerHelper(_BaseSQLHelper):
     DRIVER_DEFAULT = '{SQL Server}'
     INSTANCE_DEFAULT = 'SQLEXPRESS'
 
-    def __init__(self, server,database, instance=INSTANCE_DEFAULT, driver=DRIVER_DEFAULT,
+    def __init__(self, server, database, instance=INSTANCE_DEFAULT, driver=DRIVER_DEFAULT,
                  trusted_connection=TRUSTED_CONNECTION_DEFAULT, **kwargs):
         self._logger = kwargs.get('logger', logging.getLogger(__name__))
         super().__init__(**kwargs)
