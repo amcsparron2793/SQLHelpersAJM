@@ -68,7 +68,7 @@ class _BaseSQLHelper:
             return self._connection, self._cursor
         except Exception as e:
             self.log_and_raise_error(e)
-
+            return None, None
     def cursor_check(self):
         """
         Checks if the cursor is properly initialized and ready for executing queries.
