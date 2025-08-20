@@ -10,7 +10,6 @@ class SQLlite3Helper(_BaseSQLHelper):
 
     IF NO LOGGER IS SPECIFIED, A DUMMY LOGGER IS USED. """
     def __init__(self, db_file_path: Union[str, Path], **kwargs):
-
         super().__init__(**kwargs)
         self.db_file_path = db_file_path
 

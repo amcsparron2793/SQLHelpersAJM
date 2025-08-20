@@ -140,9 +140,9 @@ class SQLServerHelper(_BaseConnectionAttributes):
 if __name__ == '__main__':
     gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
                                   "database=gisprod;"
-                                  "trusted_connection=no;username=sa;password=A1bany2025!")
+                                  "trusted_connection=no;username=sa;password=")
     #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
-    #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password='A1bany2025!')
+    #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
     sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
     sql_srv.get_connection_and_cursor()
     sql_srv.query("select SYSTEM_USER")
