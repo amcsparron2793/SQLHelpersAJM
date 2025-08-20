@@ -3,3 +3,5 @@ colorama==0.4.6
 packaging==25
 pyproject_hooks==1.1.0
 setuptools==75.1.0
+
+pyodbc~=5.2.0

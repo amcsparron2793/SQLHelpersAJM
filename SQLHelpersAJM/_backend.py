@@ -20,8 +20,29 @@ def deprecated(reason: str = ""):
             return func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 
-class _NoCursorInitializedError(Exception):
-    ...
+class _UseDefaultMessageBase(Exception):
+    DEFAULT_MESSAGE = ""
+
+    def __init__(self, msg: str = None):
+        if not msg:
+            msg = self.__class__.DEFAULT_MESSAGE
+        super().__init__(msg)
+
+
+class _NoCursorInitializedError(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = ("Cursor has not been initialized yet, "
+                       "run get_connection_and_cursor before querying")
+
+
+class _NoConnectionInitializedError(_NoCursorInitializedError):
+    DEFAULT_MESSAGE = ("Connection has not been initialized yet, "
+                       "run get_connection_and_cursor before querying")
+
+
+class _NoResultsToConvertError(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = ("A query has not been executed, "
+                       "please execute a query before calling this method.")
