@@ -9,7 +9,7 @@ from collections import ChainMap
 from typing import Optional, List, Union
 import logging
 
-from _backend import deprecated, _NoCursorInitializedError, _NoResultsToConvertError
+from _backend import deprecated, _NoCursorInitializedError, _NoResultsToConvertError, _NoTrackedTablesError
 from _version import __version__
 
 
@@ -437,3 +437,275 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
                                                          key_value_split_char)
         return cls(**cxn_attrs, **kwargs)
 
+#  TODO: strip out SQLLite specific stuff
+class CreateTriggersSQLLite(SQLlite3Helper):
+    """
+        Class for managing SQLite triggers and audit logging.
+
+        This class extends `SQLlite3Helper` to handle the creation and management
+        of database triggers that log changes (inserts, updates, and deletes) made
+        on specific tables into an audit log table.
+
+        Attributes:
+        -----------
+        TABLES_TO_TRACK : list
+            A list of table names to generate audit triggers for.
+        AUDIT_LOG_CREATE_TABLE : str
+            SQL query to create the audit log table if it does not exist.
+        AUDIT_LOG_CREATED_CHECK : str
+            SQL query to check if the audit log table already exists.
+        HAS_TRIGGER_CHECK : str
+            SQL query used to check if a given table has triggers associated with it.
+        INSERT_TRIGGER : str
+            SQL template used to generate an INSERT trigger for a table.
+        UPDATE_TRIGGER : str
+            SQL template used to generate an UPDATE trigger for a table.
+        DELETE_TRIGGER : str
+            SQL template used to generate a DELETE trigger for a table.
+
+        Methods:
+        --------
+        __init__(db_file_path: Union[str, Path]):
+            Initializes the SQLite connection and ensures the audit log table is created.
+
+        __init_subclass__(**kwargs):
+            Ensures that all subclasses define tables to track changes for.
+
+        _create_audit_log_table():
+            Creates the audit log table in the SQLite database.
+
+        has_tracked_tables() -> bool:
+            Class method to check if any tables have been listed for tracking.
+
+        has_audit_log_table() -> bool:
+            Property to check if the audit log table exists in the SQLite database.
+
+        _has_trigger(table: str) -> bool:
+            Checks whether audit triggers already exist for a given table.
+
+        _get_column_names(table: str) -> list:
+            Retrieves the names of all columns for a given table.
+
+        _get_row_json(columns: list) -> tuple:
+            Generates JSON object strings for representing old and new rows
+            based on the provided column names.
+
+        create_triggers_for_table(table_name: str, columns: list, commit_triggers: bool=False):
+            Creates the INSERT, UPDATE, and DELETE triggers for a given table and optionally commits them.
+
+        generate_triggers_for_all_tables():
+            Generates triggers for all the tables in `TABLES_TO_TRACK` if they do
+            not already exist and commits the changes to the database.
+    """
+    TABLES_TO_TRACK = []
+    AUDIT_LOG_CREATE_TABLE = """create table audit_log
+                                (
+                                    id           INTEGER
+                                        primary key autoincrement,
+                                    table_name   TEXT not null,
+                                    operation    TEXT not null,
+                                    old_row_data TEXT,
+                                    new_row_data TEXT,
+                                    change_time  TIMESTAMP default CURRENT_TIMESTAMP
+                                );"""
+    AUDIT_LOG_CREATED_CHECK = "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log';"
+    HAS_TRIGGER_CHECK = """select tbl_name 
+                        from sqlite_master 
+                        where type='trigger' 
+                            and tbl_name='{table}';"""
+    GET_COLUMN_NAMES = """SELECT p.name as columnName
+                        FROM sqlite_master m
+                        left outer join pragma_table_info((m.name)) p
+                            on m.name <> p.name
+                        where m.name = '{table}';"""
+    INSERT_TRIGGER = """
+            CREATE TRIGGER after_{table_name}_insert
+            AFTER INSERT ON {table_name}
+            BEGIN
+                INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                VALUES (
+                    '{table_name}', 
+                    'INSERT', 
+                    NULL, 
+                    {new_row_json}
+                );
+            END;
+            """
+
+    UPDATE_TRIGGER = """
+            CREATE TRIGGER after_{table_name}_update
+            AFTER UPDATE ON {table_name}
+            BEGIN
+                INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                VALUES (
+                    '{table_name}', 
+                    'UPDATE', 
+                    {old_row_json}, 
+                    {new_row_json}
+                );
+            END;
+            """
+
+    DELETE_TRIGGER = """
+        CREATE TRIGGER after_{table_name}_delete
+        AFTER DELETE ON {table_name}
+        BEGIN
+            INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+            VALUES (
+                '{table_name}', 
+                'DELETE', 
+                {old_row_json}, 
+                NULL
+            );
+        END;
+        """
+
+    def __init__(self, db_file_path: Union[str, Path]):
+        super().__init__(db_file_path)
+
+        if not self.has_audit_log_table:
+            self._create_audit_log_table()
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not cls.has_tracked_tables():
+            raise _NoTrackedTablesError()
+
+    def _create_audit_log_table(self):
+        """
+        Creates the audit log table in the database.
+
+        :return: None
+        :rtype: None
+        """
+        self._cursor.execute(self.__class__.AUDIT_LOG_CREATE_TABLE)
+        self._connection.commit()
+        self._logger.info("Audit log table created.")
+
+    @classmethod
+    def has_tracked_tables(cls):
+        """
+        Checks if there are any tracked tables defined in the TABLES_TO_TRACK attribute.
+
+        :return: True if there are tables to track, False otherwise
+        :rtype: bool
+
+        """
+        return bool(cls.TABLES_TO_TRACK)
+
+    @property
+    def has_audit_log_table(self):
+        """
+        Checks if the audit log table exists by executing a predefined query.
+
+        :return: True if the audit log table exists, False otherwise
+        :rtype: bool
+        """
+        if not self._connection or not self._cursor:
+            self.GetConnectionAndCursor()
+        self.Query(self.__class__.AUDIT_LOG_CREATED_CHECK)
+        if self.query_results:
+            return True
+        return False
+
+    def _has_trigger(self, table):
+        """
+        :param table: The name of the table to check for associated triggers.
+        :type table: str
+        :return: Returns True if the table has associated triggers, otherwise False.
+        :rtype: bool
+        """
+        self.Query(self.__class__.HAS_TRIGGER_CHECK.format(table=table))
+        if self.query_results:
+            return True
+        return False
+
+    def _get_column_names(self, table):
+        self.Query(self.__class__.GET_COLUMN_NAMES.format(table=table))
+        if self.query_results:
+            return [x[0] for x in self.query_results]
+
+    @staticmethod
+    def _get_row_json(columns):
+        """
+        :param columns: List of column names to be used for generating JSON objects.
+        :type columns: list of str
+        :return: A tuple containing two strings, `new_row_json` and `old_row_json`.
+                 Each string is a JSON object representation using the given columns.
+        :rtype: tuple
+        """
+        # changed to .format instead of f-strings to preserve backwards compatibility with py <=3.8
+        new_row_json = "json_object({})".format(
+            ', '.join(["'{}', NEW.{}".format(col, col) for col in columns])
+        )
+        old_row_json = "json_object({})".format(
+            ', '.join(["'{}', OLD.{}".format(col, col) for col in columns])
+        )
+        return new_row_json, old_row_json
+
+    def create_triggers_for_table(self, table_name, columns, commit_triggers=False):
+        """
+        :param table_name: Name of the database table for which triggers are to be created.
+        :type table_name: str
+        :param columns: List of column names to be included in the triggers.
+        :type columns: list
+        :param commit_triggers: Flag indicating whether the changes should be committed to the database. Defaults to False.
+        :type commit_triggers: bool
+        :return: None
+        :rtype: None
+        """
+        new_row_json, old_row_json = self._get_row_json(columns)
+
+        # INSERT Trigger for table_name
+        insert_trigger_query = self.__class__.INSERT_TRIGGER.format(table_name=table_name,
+                                                                    new_row_json=new_row_json)
+        self._cursor.execute(insert_trigger_query)
+
+        # UPDATE Trigger for table_name
+        update_trigger_query = self.__class__.UPDATE_TRIGGER.format(table_name=table_name,
+                                                                    old_row_json=old_row_json,
+                                                                    new_row_json=new_row_json)
+        self._cursor.execute(update_trigger_query)
+
+        # DELETE Trigger for table_name
+        delete_trigger_query = self.__class__.DELETE_TRIGGER.format(table_name=table_name,
+                                                                    old_row_json=old_row_json)
+        self._cursor.execute(delete_trigger_query)
+
+        if not commit_triggers:
+            self._logger.warning(f"triggers for {table_name} created but NOT COMMITTED.")
+        else:
+            self._connection.commit()
+            self._logger.info(f"triggers for {table_name} created and committed.")
+
+    def generate_triggers_for_all_tables(self):
+        """
+        Generates database triggers for all the tables listed in `TABLES_TO_TRACK`.
+
+        This function iterates through each table in `TABLES_TO_TRACK` and checks if
+        the table already has triggers. If triggers are not present for a table, it
+        creates them by calling `create_triggers_for_table` using the table name as
+        well as the column names retrieved from `_get_column_names`. Debug and
+        informational logging is performed during this process to record trigger
+        generation status for each table. After successfully generating triggers for
+        all tables, the changes are committed to the database.
+
+        :return: None
+        :rtype: None
+        """
+        self._logger.info(f"Attempting to generate triggers for {len(self.__class__.TABLES_TO_TRACK)} tables")
+
+        for table in self.__class__.TABLES_TO_TRACK:
+            if not self._has_trigger(table):
+                self.create_triggers_for_table(table, self._get_column_names(table))
+                self._logger.debug(f'triggers for {table} created')
+                print(f'triggers for {table} created')
+            else:
+                print(f'{table} already has triggers')
+                self._logger.debug(f'{table} already has triggers')
+
+        self._logger.info('triggers generated successfully')
+
+        self._logger.info('committing triggers')
+        self._connection.commit()
+        self._logger.info('triggers committed successfully')
