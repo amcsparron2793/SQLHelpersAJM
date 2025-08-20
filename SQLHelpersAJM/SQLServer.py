@@ -2,7 +2,6 @@
 # pylint: disable=import-error
 
 import logging
-from typing import Optional, List
 import pyodbc
 
 from SQLHelpersAJM import _BaseSQLHelper
@@ -227,8 +226,8 @@ class SQLServerHelper(_BaseSQLHelper):
 
 if __name__ == '__main__':
     gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
-                                  f"database=gisprod;"
-                                  f"trusted_connection=yes")
+                                  "database=gisprod;"
+                                  "trusted_connection=yes")
     SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
     #sql = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password='A1bany2025!')
     sql = SQLServerHelper.with_connection_string(gis_prod_connection_string)

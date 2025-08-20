@@ -47,9 +47,16 @@ class _BaseSQLHelper:
         :return: A connection object if the connection is successful.
         :rtype: Any
         """
-        ...
 
     def log_and_raise_error(self, err: Exception):
+        """
+        Logs an error message and raises the given exception.
+
+        :param err: The exception to be logged and raised.
+        :type err: Exception
+        :return: None
+        :rtype: None
+        """
         self._logger.error(err, exc_info=True)
         raise err from None
 
@@ -57,6 +64,11 @@ class _BaseSQLHelper:
         "This method is deprecated and will be removed in a future release. "
         "Please use the get_connection_and_cursor method instead.")
     def GetConnectionAndCursor(self):
+        """
+        :return: A tuple containing a database connection object and a cursor object.
+        :rtype: tuple
+
+        """
         return self.get_connection_and_cursor()
 
     def get_connection_and_cursor(self):
@@ -127,7 +139,7 @@ class _BaseSQLHelper:
                 print(f"{len(res)} item(s) returned.")
             else:
                 if not is_commit:
-                    self._logger.warning(f"query returned no results")
+                    self._logger.warning("query returned no results")
             res = self.normalize_single_result(res)
             self.query_results = res
         except Exception as e:
@@ -160,8 +172,7 @@ class _BaseSQLHelper:
         """
         if self.query_results:
             return self._ConvertToFinalListDict(self.query_results)
-        else:
-            return None
+        return None
 
     @property
     def results_column_names(self) -> List[str] or None:
@@ -171,7 +182,7 @@ class _BaseSQLHelper:
         """
         try:
             return [d[0] for d in self._cursor.description]
-        except AttributeError as e:
+        except AttributeError:
             return None
 
     def _ConvertToFinalListDict(self, results: List[tuple]) -> List[dict] or None:
@@ -199,5 +210,4 @@ class _BaseSQLHelper:
         if len(final_list_dict) > 0:
             # this returns a sorted list dict instead of an unsorted list dict
             return [dict(sorted(x.items())) for x in final_list_dict]
-        else:
-            return None
+        return None
