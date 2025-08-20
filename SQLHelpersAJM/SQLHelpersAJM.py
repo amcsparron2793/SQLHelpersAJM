@@ -7,7 +7,7 @@ classes meant to streamline interaction with multiple different flavors of SQL d
 from abc import abstractmethod
 from collections import ChainMap
 from logging import basicConfig
-from typing import Optional, List
+from typing import Optional, List, Union
 import logging
 
 from _backend import deprecated, _NoCursorInitializedError, _NoResultsToConvertError
@@ -53,6 +53,12 @@ class _BaseSQLHelper:
         self._logger.error(err, exc_info=True)
         raise err from None
 
+    @deprecated(
+        "This method is deprecated and will be removed in a future release. "
+        "Please use the get_connection_and_cursor method instead.")
+    def GetConnectionAndCursor(self):
+        return self.get_connection_and_cursor()
+
     def get_connection_and_cursor(self):
         """
         Establishes and retrieves a database connection and its associated cursor object.
@@ -92,11 +98,11 @@ class _BaseSQLHelper:
         self.query(sql_string, **kwargs)
 
     @staticmethod
-    def normalize_single_result(result):
+    def normalize_single_result(result) -> (Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
         if len(result) == 1:
             result = result[0]
-        else:
-            if len(result) == 1:
+            # if the result is still one entry or the second entry of the result is blank
+            if len(result) == 1 or (len(result) == 2 and result[1] == ''):
                 result = result[0]
         return result
 
