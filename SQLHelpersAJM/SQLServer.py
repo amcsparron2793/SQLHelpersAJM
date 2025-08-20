@@ -128,7 +128,6 @@ class SQLServerHelper(_BaseSQLHelper):
         self._logger = kwargs.get('logger', logging.getLogger(__name__))
         super().__init__(**kwargs)
 
-        self._connection_string = kwargs.get('connection_string', None)
         if self._connection_string is not None:
             self._logger.debug("populating class attributes "
                                "using the provided connection string")
@@ -141,8 +140,6 @@ class SQLServerHelper(_BaseSQLHelper):
         self.username = kwargs.get('username', '')
         self._password = kwargs.get('password', '')
         self.trusted_connection = trusted_connection
-        self._connection, self._cursor = None, None
-        self._query_results = None
 
         if all(self.connection_information):
             self._logger.debug(f"initialized {self.__class__.__name__} with the following connection parameters:\n"
@@ -193,14 +190,18 @@ class SQLServerHelper(_BaseSQLHelper):
     def with_connection_string(cls, connection_string: str,
                                attr_split_char: str = ';', key_value_split_char: str = '=', **kwargs):
         """
-        :param connection_string: A string containing the connection attributes separated by attr_split_char and key-value pairs separated by key_value_split_char. This parameter is mandatory and cannot be None.
+        :param connection_string: A string containing the connection attributes separated by attr_split_char
+            and key-value pairs separated by key_value_split_char. This parameter is mandatory and cannot be None.
         :type connection_string: Optional[str]
-        :param attr_split_char: The character used to split the connection attributes in the connection_string. Default is ';'.
+        :param attr_split_char: The character used to split the connection attributes in the connection_string.
+            Default is ';'.
         :type attr_split_char: str
-        :param key_value_split_char: The character used to separate keys and values in each connection attribute in the connection_string. Default is '='.
+        :param key_value_split_char: The character used to separate keys and values in each connection attribute
+            in the connection_string. Default is '='.
         :type key_value_split_char: str
         :param kwargs: Additional keyword arguments to be passed during the initialization of the class.
-        :return: An instance of the class initialized with the attributes parsed from the connection_string and additional keyword arguments.
+        :return: An instance of the class initialized with the attributes parsed from the connection_string
+            and additional keyword arguments.
         :rtype: cls
         """
         if not connection_string:
