@@ -4,10 +4,10 @@
 import logging
 import pyodbc
 
-from SQLHelpersAJM import _BaseSQLHelper
+from SQLHelpersAJM import _BaseSQLHelper, _BaseConnectionAttributes
 
 
-class SQLServerHelper(_BaseSQLHelper):
+class SQLServerHelper(_BaseConnectionAttributes, _BaseSQLHelper):
     """
     A helper class to interact with an SQL Server database using pyodbc.
     Provides utility methods for connection management, executing queries, and formatting query results.
@@ -125,91 +125,9 @@ class SQLServerHelper(_BaseSQLHelper):
 
     def __init__(self, server, database, instance=INSTANCE_DEFAULT, driver=DRIVER_DEFAULT,
                  trusted_connection=TRUSTED_CONNECTION_DEFAULT, **kwargs):
-        self._logger = kwargs.get('logger', logging.getLogger(__name__))
-        super().__init__(**kwargs)
-
-        if self._connection_string is not None:
-            self._logger.debug("populating class attributes "
-                               "using the provided connection string")
-            self.__class__.with_connection_string(self._connection_string, logger=self._logger)
-
-        self.server = server
-        self.instance = instance
-        self.database = database
-        self.driver = driver
-        self.username = kwargs.get('username', '')
-        self._password = kwargs.get('password', '')
-        self.trusted_connection = trusted_connection
-
-        if all(self.connection_information):
-            self._logger.debug(f"initialized {self.__class__.__name__} with the following connection parameters:\n"
-                               f"{',\n'.join(['='.join(x) for x in self.connection_information.items()])}")
-
-    @property
-    def connection_information(self):
-        return {'server': self.server,
-                'instance': self.instance,
-                'database': self.database,
-                'driver': self.driver,
-                'username': self.username,
-                'password': 'WITHHELD or None',
-                'trusted_connection': self.trusted_connection}
-
-    @property
-    def connection_string(self):
-        """
-        Constructs and returns the connection string if required attributes are provided.
-
-        :return: The constructed connection string composed of driver, server, and database information.
-        :rtype: str
-        """
-        if all((self.server, self.instance, self.database, self.driver)):
-            self._connection_string = (f"driver={self.driver};"
-                                       f"server={self.server}\\{self.instance};"
-                                       f"database={self.database};"
-                                       f"UID={self.username};"
-                                       f"PWD={self._password};"
-                                       f"trusted_connection={self.trusted_connection}")
-            self._logger.debug(
-                f"populated connection string as {self._connection_string.replace(self._password, 'WITHHELD')}")
-        return self._connection_string
-
-    @staticmethod
-    def _connection_string_to_attributes(connection_string: str,
-                                         attr_split_char: str,
-                                         key_value_split_char: str):
-
-        cxn_attrs = connection_string.split(attr_split_char)
-        cxn_attrs = {x.split(key_value_split_char)[0].lower(): x.split(key_value_split_char)[1] for x in cxn_attrs}
-        if len(cxn_attrs.get('server').split('\\')) == 2:
-            cxn_attrs.update({'server': cxn_attrs.get('server').split('\\')[0],
-                              'instance': cxn_attrs.get('server').split('\\')[1]})
-        return cxn_attrs
-
-    @classmethod
-    def with_connection_string(cls, connection_string: str,
-                               attr_split_char: str = ';', key_value_split_char: str = '=', **kwargs):
-        """
-        :param connection_string: A string containing the connection attributes separated by attr_split_char
-            and key-value pairs separated by key_value_split_char. This parameter is mandatory and cannot be None.
-        :type connection_string: Optional[str]
-        :param attr_split_char: The character used to split the connection attributes in the connection_string.
-            Default is ';'.
-        :type attr_split_char: str
-        :param key_value_split_char: The character used to separate keys and values in each connection attribute
-            in the connection_string. Default is '='.
-        :type key_value_split_char: str
-        :param kwargs: Additional keyword arguments to be passed during the initialization of the class.
-        :return: An instance of the class initialized with the attributes parsed from the connection_string
-            and additional keyword arguments.
-        :rtype: cls
-        """
-        if not connection_string:
-            raise AttributeError("connection_string is required")
-        cxn_attrs = cls._connection_string_to_attributes(connection_string,
-                                                         attr_split_char,
-                                                         key_value_split_char)
-        return cls(**cxn_attrs, **kwargs)
+        self._logger = logging.getLogger(__name__)
+        logging.basicConfig(level='WARNING')
+        super().__init__(server, database, instance, driver, trusted_connection, logger=self._logger, **kwargs)
 
     def _connect(self):
         """
@@ -228,11 +146,10 @@ class SQLServerHelper(_BaseSQLHelper):
 if __name__ == '__main__':
     gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
                                   "database=gisprod;"
-                                  "trusted_connection=yes")
-    SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
+                                  "trusted_connection=yes;username=sa;password=A1bany2025!")
+    #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
     #sql = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password='A1bany2025!')
     sql = SQLServerHelper.with_connection_string(gis_prod_connection_string)
     sql.get_connection_and_cursor()
     sql.query("select SYSTEM_USER")
     print(sql.query_results)
-    print(sql.connection_string)
