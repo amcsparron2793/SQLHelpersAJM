@@ -437,8 +437,74 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
                                                          key_value_split_char)
         return cls(**cxn_attrs, **kwargs)
 
+
+class sqlite_class_attrs:
+    TABLES_TO_TRACK = []
+    AUDIT_LOG_CREATE_TABLE = """create table audit_log
+                                    (
+                                        id           INTEGER
+                                            primary key autoincrement,
+                                        table_name   TEXT not null,
+                                        operation    TEXT not null,
+                                        old_row_data TEXT,
+                                        new_row_data TEXT,
+                                        change_time  TIMESTAMP default CURRENT_TIMESTAMP
+                                    );"""
+    AUDIT_LOG_CREATED_CHECK = "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log';"
+    HAS_TRIGGER_CHECK = """select tbl_name 
+                            from sqlite_master 
+                            where type='trigger' 
+                                and tbl_name='{table}';"""
+    GET_COLUMN_NAMES = """SELECT p.name as columnName
+                            FROM sqlite_master m
+                            left outer join pragma_table_info((m.name)) p
+                                on m.name <> p.name
+                            where m.name = '{table}';"""
+    INSERT_TRIGGER = """
+                CREATE TRIGGER after_{table_name}_insert
+                AFTER INSERT ON {table_name}
+                BEGIN
+                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                    VALUES (
+                        '{table_name}', 
+                        'INSERT', 
+                        NULL, 
+                        {new_row_json}
+                    );
+                END;
+                """
+
+    UPDATE_TRIGGER = """
+                CREATE TRIGGER after_{table_name}_update
+                AFTER UPDATE ON {table_name}
+                BEGIN
+                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                    VALUES (
+                        '{table_name}', 
+                        'UPDATE', 
+                        {old_row_json}, 
+                        {new_row_json}
+                    );
+                END;
+                """
+
+    DELETE_TRIGGER = """
+            CREATE TRIGGER after_{table_name}_delete
+            AFTER DELETE ON {table_name}
+            BEGIN
+                INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                VALUES (
+                    '{table_name}', 
+                    'DELETE', 
+                    {old_row_json}, 
+                    NULL
+                );
+            END;
+            """
+
+
 #  TODO: strip out SQLLite specific stuff
-class CreateTriggersSQLLite(SQLlite3Helper):
+class _BaseCreateTriggers(_BaseSQLHelper):
     """
         Class for managing SQLite triggers and audit logging.
 
@@ -498,78 +564,45 @@ class CreateTriggersSQLLite(SQLlite3Helper):
             not already exist and commits the changes to the database.
     """
     TABLES_TO_TRACK = []
-    AUDIT_LOG_CREATE_TABLE = """create table audit_log
-                                (
-                                    id           INTEGER
-                                        primary key autoincrement,
-                                    table_name   TEXT not null,
-                                    operation    TEXT not null,
-                                    old_row_data TEXT,
-                                    new_row_data TEXT,
-                                    change_time  TIMESTAMP default CURRENT_TIMESTAMP
-                                );"""
-    AUDIT_LOG_CREATED_CHECK = "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log';"
-    HAS_TRIGGER_CHECK = """select tbl_name 
-                        from sqlite_master 
-                        where type='trigger' 
-                            and tbl_name='{table}';"""
-    GET_COLUMN_NAMES = """SELECT p.name as columnName
-                        FROM sqlite_master m
-                        left outer join pragma_table_info((m.name)) p
-                            on m.name <> p.name
-                        where m.name = '{table}';"""
-    INSERT_TRIGGER = """
-            CREATE TRIGGER after_{table_name}_insert
-            AFTER INSERT ON {table_name}
-            BEGIN
-                INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-                VALUES (
-                    '{table_name}', 
-                    'INSERT', 
-                    NULL, 
-                    {new_row_json}
-                );
-            END;
-            """
+    AUDIT_LOG_CREATE_TABLE = None
+    AUDIT_LOG_CREATED_CHECK = None
+    HAS_TRIGGER_CHECK = None
+    GET_COLUMN_NAMES = None
 
-    UPDATE_TRIGGER = """
-            CREATE TRIGGER after_{table_name}_update
-            AFTER UPDATE ON {table_name}
-            BEGIN
-                INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-                VALUES (
-                    '{table_name}', 
-                    'UPDATE', 
-                    {old_row_json}, 
-                    {new_row_json}
-                );
-            END;
-            """
+    INSERT_TRIGGER = None
+    UPDATE_TRIGGER = None
+    DELETE_TRIGGER = None
 
-    DELETE_TRIGGER = """
-        CREATE TRIGGER after_{table_name}_delete
-        AFTER DELETE ON {table_name}
-        BEGIN
-            INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-            VALUES (
-                '{table_name}', 
-                'DELETE', 
-                {old_row_json}, 
-                NULL
-            );
-        END;
-        """
-
-    def __init__(self, db_file_path: Union[str, Path]):
-        super().__init__(db_file_path)
-
-        if not self.has_audit_log_table:
-            self._create_audit_log_table()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # if not self.has_audit_log_table:
+        #     self._create_audit_log_table()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if not cls.has_tracked_tables():
             raise _NoTrackedTablesError()
+
+    @abstractmethod
+    def _connect(self):
+        ...
+
+    @property
+    def has_required_class_attributes(self):
+        for x in self.required_class_attributes:
+            if x not in self.class_attr_list.keys():
+                raise AttributeError(f"{x} is not defined in the class")
+        return True
+
+    @property
+    def required_class_attributes(self):
+        return [x for x in self.__dir__() if x.isupper()]
+
+    @property
+    def class_attr_list(self):
+        class_attrs = {key: value for key, value in self.__class__.__dict__.items() if
+                       not callable(value) and not key.startswith("__")}
+        return class_attrs
 
     def _create_audit_log_table(self):
         """
