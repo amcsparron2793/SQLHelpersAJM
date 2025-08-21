@@ -17,7 +17,21 @@ from _backend import (deprecated,
 from _version import __version__
 
 
-class _BaseSQLHelper:
+class _SharedLogger:
+    def _setup_logger(self, **kwargs) -> logging.Logger:
+        """
+        Sets up and returns a logger for the class.
+
+        :return: Configured logger instance.
+        :rtype: logging.Logger
+        """
+        logger = logging.getLogger(self.__class__.__name__)
+        if not logger.hasHandlers():
+            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
+        return logger
+
+
+class _BaseSQLHelper(_SharedLogger):
     """
     _BaseSQLHelper is an abstract base class providing database connection, querying,
         and result transformation capabilities. This class includes methods for managing database connections,
@@ -78,18 +92,6 @@ class _BaseSQLHelper:
     @property
     def __version__(self):
         return __version__
-
-    def _setup_logger(self, **kwargs) -> logging.Logger:
-        """
-        Sets up and returns a logger for the class.
-
-        :return: Configured logger instance.
-        :rtype: logging.Logger
-        """
-        logger = logging.getLogger(self.__class__.__name__)
-        if not logger.hasHandlers():
-            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
-        return logger
 
     @property
     def is_ready_for_query(self):
@@ -442,8 +444,7 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
         return cls(**cxn_attrs, **kwargs)
 
 
-#  TODO: strip out SQLLite specific stuff
-class _BaseCreateTriggers(_BaseSQLHelper):
+class _BaseCreateTriggers(_SharedLogger):
     """
         Class for managing SQLite triggers and audit logging.
 
@@ -513,9 +514,12 @@ class _BaseCreateTriggers(_BaseSQLHelper):
     DELETE_TRIGGER = None
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # if not self.has_audit_log_table:
-        #     self._create_audit_log_table()
+        self._cursor = None
+        self._connection = None
+        self._logger = self._setup_logger()
+        self.audit_log_table_init()
+        if self.has_required_class_attributes:
+            pass
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -523,8 +527,36 @@ class _BaseCreateTriggers(_BaseSQLHelper):
                 and not cls.is_table_tracker_class()):
             raise _NoTrackedTablesError()
 
+    def audit_log_table_init(self):
+        if hasattr(self, 'get_connection_and_cursor'):
+            self.get_connection_and_cursor()
+            if not self.has_audit_log_table:
+                self._create_audit_log_table()
+            else:
+                self._logger.info("audit_log_table detected.")
+        else:
+            raise AttributeError("improper subclassing, "
+                                 "\'get_connection_and_cursor\' method is missing.")
+
     @abstractmethod
     def _connect(self):
+        ...
+
+    @abstractmethod
+    def Query(self, sql_string: str, **kwargs):
+        ...
+
+    @property
+    @abstractmethod
+    def query_results(self):
+        ...
+
+    @abstractmethod
+    def GetConnectionAndCursor(self):
+        ...
+
+    @abstractmethod
+    def get_connection_and_cursor(self):
         ...
 
     @classmethod
@@ -583,8 +615,6 @@ class _BaseCreateTriggers(_BaseSQLHelper):
         :return: True if the audit log table exists, False otherwise
         :rtype: bool
         """
-        if not self._connection or not self._cursor:
-            self.GetConnectionAndCursor()
         self.Query(self.__class__.AUDIT_LOG_CREATED_CHECK)
         if self.query_results:
             return True
@@ -676,18 +706,25 @@ class _BaseCreateTriggers(_BaseSQLHelper):
         :rtype: None
         """
         self._logger.info(f"Attempting to generate triggers for {len(self.__class__.TABLES_TO_TRACK)} tables")
+        trigger_create_counter = 0
+        already_created_counter = 0
 
         for table in self.__class__.TABLES_TO_TRACK:
             if not self._has_trigger(table):
+                trigger_create_counter =+ 1
                 self.create_triggers_for_table(table, self._get_column_names(table))
                 self._logger.debug(f'triggers for {table} created')
                 print(f'triggers for {table} created')
             else:
+                already_created_counter =+ 1
                 print(f'{table} already has triggers')
                 self._logger.debug(f'{table} already has triggers')
 
-        self._logger.info('triggers generated successfully')
+        if trigger_create_counter > 0:
+            self._logger.info(f'{trigger_create_counter} trigger(s) generated successfully')
 
-        self._logger.info('committing triggers')
-        self._connection.commit()
-        self._logger.info('triggers committed successfully')
+            self._logger.info('committing triggers')
+            self._connection.commit()
+            self._logger.info('triggers committed successfully')
+        if already_created_counter > 0:
+            self._logger.info(f'{already_created_counter} trigger(s) were already present')

@@ -69,38 +69,24 @@ class _SQLlite3TableTracker(_BaseCreateTriggers):
                 END;
                 """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if self.has_required_class_attributes:
-            pass
-
     @abstractmethod
     def _connect(self):
         ...
 
 
-class SQLlite3Helper(_SQLlite3TableTracker):
+class SQLlite3Helper(_BaseSQLHelper):
     """ Initializes an SQLlite3 database and has a basic query method.
     This class is meant to be subclassed and expanded.
 
     IF NO LOGGER IS SPECIFIED, A DUMMY LOGGER IS USED. """
-    TABLES_TO_TRACK = ['no table']
 
     def __init__(self, db_file_path: Union[str, Path], **kwargs):
+        self.logger_level = kwargs.get('logger_level', 'INFO')
         self.db_file_path = db_file_path
         super().__init__(**kwargs)
 
     def _setup_logger(self, **kwargs):
-        return super()._setup_logger(basic_config_level='DEBUG')
-
-    # @property
-    # def has_required_class_attributes(self):
-    #     class_attr = [(hasattr(super(), x) and getattr(super(), x) is not None)
-    #                   for x in self.required_class_attributes]
-    #     if all(class_attr):
-    #         self._logger.debug("All required class attributes are set.")
-    #         return True
-    #     raise _MissingRequiredClassAttribute()
+        return super()._setup_logger(basic_config_level=self.logger_level)
 
     @property
     def __version__(self):
@@ -125,14 +111,29 @@ class SQLlite3Helper(_SQLlite3TableTracker):
         return self._connection, self._cursor
 
 
+class SQLite3HelperTT(SQLlite3Helper, _SQLlite3TableTracker):
+    TABLES_TO_TRACK = ['test_table']
+
+    def __init__(self, db_file_path: Union[str, Path], **kwargs):
+        super().__init__(db_file_path, **kwargs)
+        _SQLlite3TableTracker.__init__(self, **kwargs)
+
+    @property
+    def __version__(self):
+        return "0.0.1"
+
+
 if __name__ == "__main__":
-    sql = SQLlite3Helper(
-        db_file_path=r"C:\Users\amcsparron\Desktop\Python_Projects\SQLHelpersAJM\Misc_Project_Files\test_db.db")
+    junk_db_filepath = r"C:\Users\amcsparron\Desktop\Python_Projects\SQLHelpersAJM\Misc_Project_Files\test_db.db"
+    # sql = SQLlite3Helper(db_file_path=junk_db_filepath)
+    sql_tt = SQLite3HelperTT(db_file_path=junk_db_filepath)
+    # sql_tt.query("insert into test_table(name, age) VALUES ('andrew', 32) returning id;", is_commit=True)
+    # sql_tt.query("select * from audit_log;", is_commit=False)
+    #print(sql_tt.query_results)
     #print(sql.class_attr_list)
     #print(sql.required_class_attributes)
     #sql.get_connection_and_cursor()
     #sql.query("drop table test_table;", is_commit=True)
-    #sql.query("create table test_table (id integer primary key autoincrement, name varchar(255), age integer);", is_commit=True)
-    #sql.query("insert into test_table(name, age) VALUES ('andrew', 32) returning id;", is_commit=True)
+    #sql_tt.query("create table test_table (id integer primary key autoincrement, name varchar(255), age integer);", is_commit=True)
     #sql.query("select * from test_table;", is_commit=False)
     #print(sql.query_results)
