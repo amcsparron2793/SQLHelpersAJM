@@ -24,16 +24,6 @@ def deprecated(reason: str = ""):
     return decorator
 
 
-class _NoTrackedTablesError(Exception):
-    DEFAULT_ERR_MSG = ("No tables have been specified to track. "
-                       "Please specify tables to track in the TABLES_TO_TRACK class variable.")
-
-    def __init__(self, msg=None):
-        if not msg:
-            msg = _NoTrackedTablesError.DEFAULT_ERR_MSG
-        super().__init__(msg)
-
-
 class _UseDefaultMessageBase(Exception):
     DEFAULT_MESSAGE = ""
 
@@ -41,6 +31,15 @@ class _UseDefaultMessageBase(Exception):
         if not msg:
             msg = self.__class__.DEFAULT_MESSAGE
         super().__init__(msg)
+
+
+class _MissingRequiredClassAttribute(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = "Missing at least one required class attribute"
+
+
+class _NoTrackedTablesError(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = ("No tables have been specified to track. "
+                       "Please specify tables to track in the TABLES_TO_TRACK class variable.")
 
 
 class _NoCursorInitializedError(_UseDefaultMessageBase):

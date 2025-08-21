@@ -9,7 +9,11 @@ from collections import ChainMap
 from typing import Optional, List, Union
 import logging
 
-from _backend import deprecated, _NoCursorInitializedError, _NoResultsToConvertError, _NoTrackedTablesError
+from _backend import (deprecated,
+                      _NoCursorInitializedError,
+                      _NoResultsToConvertError,
+                      _NoTrackedTablesError,
+                      _MissingRequiredClassAttribute)
 from _version import __version__
 
 
@@ -75,7 +79,7 @@ class _BaseSQLHelper:
     def __version__(self):
         return __version__
 
-    def _setup_logger(self, ** kwargs) -> logging.Logger:
+    def _setup_logger(self, **kwargs) -> logging.Logger:
         """
         Sets up and returns a logger for the class.
 
@@ -181,7 +185,7 @@ class _BaseSQLHelper:
 
     @staticmethod
     def normalize_single_result(result) -> (
-    Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
+            Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
         """
         :param result: The input data that can be a tuple, list, or other iterable structure,
         typically containing one or more elements; used to normalize to a simpler format.
@@ -438,71 +442,6 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
         return cls(**cxn_attrs, **kwargs)
 
 
-class sqlite_class_attrs:
-    TABLES_TO_TRACK = []
-    AUDIT_LOG_CREATE_TABLE = """create table audit_log
-                                    (
-                                        id           INTEGER
-                                            primary key autoincrement,
-                                        table_name   TEXT not null,
-                                        operation    TEXT not null,
-                                        old_row_data TEXT,
-                                        new_row_data TEXT,
-                                        change_time  TIMESTAMP default CURRENT_TIMESTAMP
-                                    );"""
-    AUDIT_LOG_CREATED_CHECK = "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log';"
-    HAS_TRIGGER_CHECK = """select tbl_name 
-                            from sqlite_master 
-                            where type='trigger' 
-                                and tbl_name='{table}';"""
-    GET_COLUMN_NAMES = """SELECT p.name as columnName
-                            FROM sqlite_master m
-                            left outer join pragma_table_info((m.name)) p
-                                on m.name <> p.name
-                            where m.name = '{table}';"""
-    INSERT_TRIGGER = """
-                CREATE TRIGGER after_{table_name}_insert
-                AFTER INSERT ON {table_name}
-                BEGIN
-                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-                    VALUES (
-                        '{table_name}', 
-                        'INSERT', 
-                        NULL, 
-                        {new_row_json}
-                    );
-                END;
-                """
-
-    UPDATE_TRIGGER = """
-                CREATE TRIGGER after_{table_name}_update
-                AFTER UPDATE ON {table_name}
-                BEGIN
-                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-                    VALUES (
-                        '{table_name}', 
-                        'UPDATE', 
-                        {old_row_json}, 
-                        {new_row_json}
-                    );
-                END;
-                """
-
-    DELETE_TRIGGER = """
-            CREATE TRIGGER after_{table_name}_delete
-            AFTER DELETE ON {table_name}
-            BEGIN
-                INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-                VALUES (
-                    '{table_name}', 
-                    'DELETE', 
-                    {old_row_json}, 
-                    NULL
-                );
-            END;
-            """
-
-
 #  TODO: strip out SQLLite specific stuff
 class _BaseCreateTriggers(_BaseSQLHelper):
     """
@@ -580,19 +519,29 @@ class _BaseCreateTriggers(_BaseSQLHelper):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not cls.has_tracked_tables():
+        if (not cls.has_tracked_tables()
+                and not cls.is_table_tracker_class()):
             raise _NoTrackedTablesError()
 
     @abstractmethod
     def _connect(self):
         ...
 
+    @classmethod
+    def is_table_tracker_class(cls):
+        return (cls.__name__.startswith('_')
+                and cls.__name__.endswith('TableTracker'))
+
     @property
     def has_required_class_attributes(self):
-        for x in self.required_class_attributes:
-            if x not in self.class_attr_list.keys():
-                raise AttributeError(f"{x} is not defined in the class")
-        return True
+        class_attr = [(hasattr(self, x) and getattr(self, x) is not None)
+                      for x in self.required_class_attributes]
+
+        if all(class_attr):
+            self._logger.debug(f"All {len(self.required_class_attributes)} "
+                               f"required class attributes are set.")
+            return True
+        raise _MissingRequiredClassAttribute()
 
     @property
     def required_class_attributes(self):

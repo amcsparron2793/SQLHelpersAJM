@@ -1,10 +1,12 @@
 import sqlite3
+from abc import abstractmethod
 from typing import Union
 from pathlib import Path
 from SQLHelpersAJM import _BaseSQLHelper, _BaseCreateTriggers
 
-class SQLlite3TableTracker(_BaseCreateTriggers):
-    TABLES_TO_TRACK = ['askjd']
+
+class _SQLlite3TableTracker(_BaseCreateTriggers):
+    TABLES_TO_TRACK = []
     AUDIT_LOG_CREATE_TABLE = """create table audit_log
                                         (
                                             id           INTEGER
@@ -72,18 +74,33 @@ class SQLlite3TableTracker(_BaseCreateTriggers):
         if self.has_required_class_attributes:
             pass
 
+    @abstractmethod
+    def _connect(self):
+        ...
 
-class SQLlite3Helper(SQLlite3TableTracker):
+
+class SQLlite3Helper(_SQLlite3TableTracker):
     """ Initializes an SQLlite3 database and has a basic query method.
     This class is meant to be subclassed and expanded.
 
     IF NO LOGGER IS SPECIFIED, A DUMMY LOGGER IS USED. """
+    TABLES_TO_TRACK = ['no table']
 
     def __init__(self, db_file_path: Union[str, Path], **kwargs):
         self.db_file_path = db_file_path
         super().__init__(**kwargs)
-        # FIXME: this needs to be able to check against its TableTracker class attributes NOT only local,
-        #  but not further back than its immediate parent
+
+    def _setup_logger(self, **kwargs):
+        return super()._setup_logger(basic_config_level='DEBUG')
+
+    # @property
+    # def has_required_class_attributes(self):
+    #     class_attr = [(hasattr(super(), x) and getattr(super(), x) is not None)
+    #                   for x in self.required_class_attributes]
+    #     if all(class_attr):
+    #         self._logger.debug("All required class attributes are set.")
+    #         return True
+    #     raise _MissingRequiredClassAttribute()
 
     @property
     def __version__(self):
@@ -109,9 +126,10 @@ class SQLlite3Helper(SQLlite3TableTracker):
 
 
 if __name__ == "__main__":
-    sql = SQLlite3Helper(db_file_path=r"C:\Users\amcsparron\Desktop\Python_Projects\SQLHelpersAJM\Misc_Project_Files\test_db.db")
-    print(sql.class_attr_list)
-    print(sql.required_class_attributes)
+    sql = SQLlite3Helper(
+        db_file_path=r"C:\Users\amcsparron\Desktop\Python_Projects\SQLHelpersAJM\Misc_Project_Files\test_db.db")
+    #print(sql.class_attr_list)
+    #print(sql.required_class_attributes)
     #sql.get_connection_and_cursor()
     #sql.query("drop table test_table;", is_commit=True)
     #sql.query("create table test_table (id integer primary key autoincrement, name varchar(255), age integer);", is_commit=True)
