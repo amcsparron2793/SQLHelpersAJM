@@ -339,6 +339,7 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
         self.driver = driver
         self.username = kwargs.get('username', '')
         self._password = kwargs.get('password', '')
+        self.port = kwargs.get('port', 0)
         self.trusted_connection = trusted_connection
 
         if all(self.connection_information):
