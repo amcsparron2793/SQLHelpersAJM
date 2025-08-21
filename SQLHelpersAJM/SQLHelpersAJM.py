@@ -4,6 +4,9 @@ SQLHelpersAJM.py
 classes meant to streamline interaction with multiple different flavors of SQL database including MSSQL and SQLlite
 
 """
+# pylint: disable=logging-fstring-interpolation
+# pylint: disable=no-member
+
 from abc import abstractmethod, ABCMeta
 from collections import ChainMap
 from typing import Optional, List, Union
@@ -31,9 +34,9 @@ class _SharedLogger:
         return logger
 
 
-class _BaseSQLHelper(_SharedLogger):
+class BaseSQLHelper(_SharedLogger):
     """
-    _BaseSQLHelper is an abstract base class providing database connection, querying,
+    BaseSQLHelper is an abstract base class providing database connection, querying,
         and result transformation capabilities. This class includes methods for managing database connections,
         querying data, and processing query results. It uses a logger for debugging and error handling,
         and supports methods for obtaining query results in different formats.
@@ -300,7 +303,7 @@ class _BaseSQLHelper(_SharedLogger):
         return None
 
 
-class _BaseConnectionAttributes(_BaseSQLHelper):
+class BaseConnectionAttributes(BaseSQLHelper):
     """
     A base class for managing database connection attributes, constructing connection strings,
     and providing mechanisms to populate class attributes either through explicit arguments
@@ -445,6 +448,45 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
 
 
 class ABCCreateTriggers(ABCMeta, type):
+    """
+    ABCCreateTriggers is a metaclass that enforces the presence and validation of certain mandatory class attributes
+    for any class inheriting from it. This is designed to implement a structure where specific attributes
+    must be defined in the derived class with valid values.
+
+    Attributes:
+      TABLES_TO_TRACK: Attribute intended for tracking specific tables.
+      AUDIT_LOG_CREATE_TABLE: Attribute for audit log creation table.
+      AUDIT_LOG_CREATED_CHECK: Attribute to verify if an audit log was created.
+      HAS_TRIGGER_CHECK: Attribute for trigger existence verification.
+      GET_COLUMN_NAMES: Attribute to get column names.
+      INSERT_TRIGGER: Attribute for defining insert triggers.
+      UPDATE_TRIGGER: Attribute for defining update triggers.
+      DELETE_TRIGGER: Attribute for defining delete triggers.
+      _MANDATORY_ATTRIBUTE_MISSING: Internal constant representing a missing attribute.
+      _MANDATORY_ATTRIBUTE_UNDEFINED: Internal constant representing an undefined attribute.
+
+    Methods:
+      __new__(mcs, name, bases, dct):
+        This method is overridden to validate that all mandatory attributes are correctly defined in
+        the derived class. If any attributes are missing or have invalid values, a TypeError is raised.
+
+      _valid_value(mcs, base_class, value):
+        Class method that checks if a value associated with a mandatory attribute is valid. It ensures
+        the attribute is not None and has a non-zero length.
+
+      get_name_value_validation_dict(mcs, bases):
+        Class method that builds a name-value validation dictionary by inspecting the base classes.
+        This dictionary maps attribute names to their validity status.
+
+      _get_mandatory_class_attrs(mcs):
+        Retrieves all mandatory attributes by inspecting the class for uppercase attribute names
+        that do not start with an underscore.
+
+      _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
+        Validates the mandatory class attributes. If any of the required attributes are either
+        missing or undefined, they are added to the failed validation set. Returns the set of
+        attributes that failed validation, along with their validation statuses.
+    """
     TABLES_TO_TRACK = None
     AUDIT_LOG_CREATE_TABLE = None
     AUDIT_LOG_CREATED_CHECK = None
@@ -458,52 +500,49 @@ class ABCCreateTriggers(ABCMeta, type):
     _MANDATORY_ATTRIBUTE_MISSING = 'missing'
     _MANDATORY_ATTRIBUTE_UNDEFINED = 'undefined'
 
-    @classmethod
-    def _valid_value(cls, base_class, value):
-        return (getattr(base_class, value) is not None
-                and len(getattr(base_class, value)) > 0)
+    def __new__(mcs, name, bases, dct):
+        mandatory_class_attrs = mcs._get_mandatory_class_attrs()
+        name_value_validation_dict = mcs.get_name_value_validation_dict(bases)
 
-    @classmethod
-    def get_name_value_validation_dict(cls, bases):
-        name_value_validation = {}
-        for x in bases:
-            for y in dir(x):
-                if not y.startswith('_') and y.isupper():
-                    name_value_validation.update({y: cls._valid_value(x, y)})
-        return name_value_validation
-
-    def __new__(cls, name, bases, dct):
-        mandatory_class_attrs = cls._get_mandatory_class_attrs()
-        name_value_validation_dict = cls.get_name_value_validation_dict(bases)
-
-        failed_validation = cls._validate_class_attributes(
-            mandatory_class_attrs,
-            name_value_validation_dict
-        )
+        failed_validation = mcs._validate_class_attributes(mandatory_class_attrs, name_value_validation_dict)
 
         if failed_validation:
             raise TypeError(
                 f"{name} is missing the definition for these attributes: {list(failed_validation)}"
             )
 
-        return super().__new__(cls, name, bases, dct)
+        return super().__new__(mcs, name, bases, dct)
 
     @classmethod
-    def _get_mandatory_class_attrs(cls):
+    def _valid_value(mcs, base_class, value):
+        return (getattr(base_class, value) is not None
+                and len(getattr(base_class, value)) > 0)
+
+    @classmethod
+    def get_name_value_validation_dict(mcs, bases):
+        name_value_validation = {}
+        for x in bases:
+            for y in dir(x):
+                if not y.startswith('_') and y.isupper():
+                    name_value_validation.update({y: mcs._valid_value(x, y)})
+        return name_value_validation
+
+    @classmethod
+    def _get_mandatory_class_attrs(mcs):
         """Retrieve mandatory class attributes."""
-        return [attr for attr in dir(cls) if not attr.startswith('_') and attr.isupper()]
+        return [attr for attr in dir(mcs) if not attr.startswith('_') and attr.isupper()]
 
     @classmethod
-    def _validate_class_attributes(cls, mandatory_attrs, name_value_dict):
+    def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
         """Validate class attributes and identify missing or undefined attributes."""
         failed_validation = {
-            (attr, cls._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else cls._MANDATORY_ATTRIBUTE_MISSING)
+            (attr, mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
             for attr, value in name_value_dict.items()
             if attr not in mandatory_attrs or not value
         }
 
         missing_attrs = {
-            (attr, cls._MANDATORY_ATTRIBUTE_MISSING)
+            (attr, mcs._MANDATORY_ATTRIBUTE_MISSING)
             for attr in mandatory_attrs
             if attr not in name_value_dict
         }
@@ -512,7 +551,7 @@ class ABCCreateTriggers(ABCMeta, type):
 
 
 # noinspection PyUnresolvedReferences
-class _BaseCreateTriggers(_SharedLogger):
+class BaseCreateTriggers(_SharedLogger):
     """
         Class for managing SQLite triggers and audit logging.
 
@@ -583,6 +622,15 @@ class _BaseCreateTriggers(_SharedLogger):
             pass
 
     def __init_subclass__(cls, **kwargs):
+        """
+        Called when a class is subclassed. Ensures that the subclass has valid configurations regarding table tracking.
+
+        :param kwargs: Additional keyword arguments passed to the subclass.
+        :type kwargs: dict
+        :raises _NoTrackedTablesError: If the subclass is missing tracked tables configuration and is not a table tracker class.
+        :return: None
+        :rtype: None
+        """
         super().__init_subclass__(**kwargs)
         is_missing_tracked_tables = (hasattr(cls, 'TABLES_TO_TRACK')
                                      and cls.TABLES_TO_TRACK == [cls._MAGIC_IGNORE_STRING]
@@ -595,6 +643,13 @@ class _BaseCreateTriggers(_SharedLogger):
         #     raise _NoTrackedTablesError()
 
     def audit_log_table_init(self):
+        """
+        Initializes the audit log table by ensuring its existence.
+
+        Calls the `get_connection_and_cursor` method of the class, if available, to establish a database connection. Verifies if the audit log table exists and creates it if it does not. Logs information if the audit log table is already detected. Raises an error if the class does not have the `get_connection_and_cursor` method.
+
+        :raise AttributeError: If the class does not have the method `get_connection_and_cursor`.
+        """
         if hasattr(self, 'get_connection_and_cursor'):
             self.get_connection_and_cursor()
             if not self.has_audit_log_table:
@@ -607,32 +662,85 @@ class _BaseCreateTriggers(_SharedLogger):
 
     @abstractmethod
     def _connect(self):
+        """
+        Establishes a connection to a specific resource or service.
+
+        This method must be implemented by subclasses to define how the connection
+        should be established. It serves as a template for specifying connection
+        details and behavior.
+
+        :return: None
+        :rtype: NoneType
+        """
         ...
 
     @abstractmethod
     def Query(self, sql_string: str, **kwargs):
+        """
+        :param sql_string: The SQL query string to be executed.
+        :type sql_string: str
+        :param kwargs: Additional keyword arguments for executing the query.
+        :type kwargs: dict
+        :return: The result of the query execution.
+        :rtype: Any
+        """
         ...
 
     @property
     @abstractmethod
     def query_results(self):
+        """
+        Indicates the property `query_results` is an abstract method that must be implemented by any subclass.
+
+        :return: The results of a specific query.
+        :rtype: Depends on the implementation in the subclass.
+        """
         ...
 
     @abstractmethod
     def GetConnectionAndCursor(self):
+        """
+        Fetches a new database connection and associated cursor.
+
+        :return: A tuple containing the database connection and cursor.
+        :rtype: tuple
+        """
         ...
 
     @abstractmethod
     def get_connection_and_cursor(self):
+        """
+        Return a connection object and a cursor object for database interaction.
+
+        :return: A tuple containing the connection object and the cursor object.
+        :rtype: tuple
+        """
         ...
 
     @classmethod
     def is_table_tracker_class(cls):
+        """
+        :return: Indicates whether the class name adheres to the naming convention of starting with an underscore ('_') and ending with 'TableTracker'.
+        :rtype: bool
+
+        """
         return (cls.__name__.startswith('_')
                 and cls.__name__.endswith('TableTracker'))
 
     @property
     def has_required_class_attributes(self):
+        """
+        Checks if all required class attributes are set and not None.
+
+        The method iterates through a list of required class attributes defined in `self.required_class_attributes`
+        and verifies if each attribute exists in the current instance and is not None. If all required attributes are
+        present and valid, it logs a debug message indicating their status and returns True. Otherwise, it raises
+        an exception `_MissingRequiredClassAttribute`.
+
+        :return: True if all required class attributes are set and not None
+        :rtype: bool
+        :raises _MissingRequiredClassAttribute: If one or more required class attributes are missing or None
+        """
         class_attr = [(hasattr(self, x) and getattr(self, x) is not None)
                       for x in self.required_class_attributes]
 
@@ -644,10 +752,18 @@ class _BaseCreateTriggers(_SharedLogger):
 
     @property
     def required_class_attributes(self):
+        """
+        :return: A list of all uppercase class attribute names.
+        :rtype: list
+        """
         return [x for x in self.__dir__() if x.isupper()]
 
     @property
     def class_attr_list(self):
+        """
+        :return: A dictionary of all non-callable, non-magic attributes of the class.
+        :rtype: dict
+        """
         class_attrs = {key: value for key, value in self.__class__.__dict__.items() if
                        not callable(value) and not key.startswith("__")}
         return class_attrs

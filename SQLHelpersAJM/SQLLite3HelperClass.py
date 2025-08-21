@@ -2,11 +2,11 @@ import sqlite3
 from abc import abstractmethod
 from typing import Union
 from pathlib import Path
-from SQLHelpersAJM import _BaseSQLHelper, _BaseCreateTriggers, ABCCreateTriggers
+from SQLHelpersAJM import BaseSQLHelper, BaseCreateTriggers, ABCCreateTriggers
 
 
-class _SQLlite3TableTracker(_BaseCreateTriggers):
-    TABLES_TO_TRACK = [_BaseCreateTriggers._MAGIC_IGNORE_STRING]
+class _SQLlite3TableTracker(BaseCreateTriggers):
+    TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
     AUDIT_LOG_CREATE_TABLE = """create table audit_log
                                         (
                                             id           INTEGER
@@ -74,7 +74,7 @@ class _SQLlite3TableTracker(_BaseCreateTriggers):
         ...
 
 
-class SQLlite3Helper(_BaseSQLHelper):
+class SQLlite3Helper(BaseSQLHelper):
     """ Initializes an SQLlite3 database and has a basic query method.
     This class is meant to be subclassed and expanded.
 
