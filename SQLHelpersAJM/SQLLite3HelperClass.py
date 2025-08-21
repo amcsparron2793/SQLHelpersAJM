@@ -2,11 +2,11 @@ import sqlite3
 from abc import abstractmethod
 from typing import Union
 from pathlib import Path
-from SQLHelpersAJM import _BaseSQLHelper, _BaseCreateTriggers
+from SQLHelpersAJM import _BaseSQLHelper, _BaseCreateTriggers, ABCCreateTriggers
 
 
 class _SQLlite3TableTracker(_BaseCreateTriggers):
-    TABLES_TO_TRACK = []
+    TABLES_TO_TRACK = [_BaseCreateTriggers._MAGIC_IGNORE_STRING]
     AUDIT_LOG_CREATE_TABLE = """create table audit_log
                                         (
                                             id           INTEGER
@@ -111,7 +111,7 @@ class SQLlite3Helper(_BaseSQLHelper):
         return self._connection, self._cursor
 
 
-class SQLite3HelperTT(SQLlite3Helper, _SQLlite3TableTracker):
+class SQLite3HelperTT(SQLlite3Helper, _SQLlite3TableTracker, metaclass=ABCCreateTriggers):
     TABLES_TO_TRACK = ['test_table']
 
     def __init__(self, db_file_path: Union[str, Path], **kwargs):

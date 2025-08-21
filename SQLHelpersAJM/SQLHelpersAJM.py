@@ -4,7 +4,7 @@ SQLHelpersAJM.py
 classes meant to streamline interaction with multiple different flavors of SQL database including MSSQL and SQLlite
 
 """
-from abc import abstractmethod
+from abc import abstractmethod, ABCMeta
 from collections import ChainMap
 from typing import Optional, List, Union
 import logging
@@ -444,6 +444,57 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
         return cls(**cxn_attrs, **kwargs)
 
 
+class ABCCreateTriggers(ABCMeta, type):
+    TABLES_TO_TRACK = None
+    AUDIT_LOG_CREATE_TABLE = None
+    AUDIT_LOG_CREATED_CHECK = None
+    HAS_TRIGGER_CHECK = None
+    GET_COLUMN_NAMES = None
+
+    INSERT_TRIGGER = None
+    UPDATE_TRIGGER = None
+    DELETE_TRIGGER = None
+
+    @classmethod
+    def _valid_value(cls, base_class, value):
+        return (getattr(base_class, value) is not None
+                and len(getattr(base_class, value)) > 0)
+
+    @classmethod
+    def get_name_value_validation_dict(cls, bases):
+        name_value_validation = {}
+        for x in bases:
+            for y in dir(x):
+                if not y.startswith('_') and y.isupper():
+                    name_value_validation.update({y: cls._valid_value(x, y)})
+        return name_value_validation
+
+    def __new__(cls, name, bases, dct):
+        # Ensure all child classes have a specific attribute
+
+        mandatory_class_attrs = [x for x in dir(cls) if not x.startswith('_') and x.isupper()]
+        # classes ACTUAL attrs
+        name_value_validation_dict = cls.get_name_value_validation_dict(bases)
+
+        is_missing_class_attr = (list(name_value_validation_dict.keys()) != mandatory_class_attrs)
+        has_undefined_class_attr = not all(name_value_validation_dict.values())
+        failed_validation = [(x[0], 'undefined' if (not x[1] or len(x[1]) == 0) else 'missing')
+                             for x in name_value_validation_dict.items() if
+                             x[0] not in mandatory_class_attrs or not x[1]]
+        missing_entirely = [(x, 'missing') for x in mandatory_class_attrs
+                            if x not in name_value_validation_dict.keys()]
+
+        # noinspection PyTypeChecker
+        failed_validation.extend(missing_entirely)
+        failed_validation = set(failed_validation)
+
+        if is_missing_class_attr or has_undefined_class_attr:
+            raise TypeError(f"{name} is missing the definition for these attributes: {list(failed_validation)}")
+
+        # Call the parent (ABCMeta) __new__ method
+        return super().__new__(cls, name, bases, dct)
+
+
 class _BaseCreateTriggers(_SharedLogger):
     """
         Class for managing SQLite triggers and audit logging.
@@ -503,15 +554,8 @@ class _BaseCreateTriggers(_SharedLogger):
             Generates triggers for all the tables in `TABLES_TO_TRACK` if they do
             not already exist and commits the changes to the database.
     """
-    TABLES_TO_TRACK = []
-    AUDIT_LOG_CREATE_TABLE = None
-    AUDIT_LOG_CREATED_CHECK = None
-    HAS_TRIGGER_CHECK = None
-    GET_COLUMN_NAMES = None
 
-    INSERT_TRIGGER = None
-    UPDATE_TRIGGER = None
-    DELETE_TRIGGER = None
+    _MAGIC_IGNORE_STRING = 'not a value'
 
     def __init__(self, **kwargs):
         self._cursor = None
@@ -523,9 +567,15 @@ class _BaseCreateTriggers(_SharedLogger):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if (not cls.has_tracked_tables()
-                and not cls.is_table_tracker_class()):
+        is_missing_tracked_tables = (hasattr(cls, 'TABLES_TO_TRACK')
+                                     and cls.TABLES_TO_TRACK == [cls._MAGIC_IGNORE_STRING]
+                                     and not cls.is_table_tracker_class())
+
+        if is_missing_tracked_tables:
             raise _NoTrackedTablesError()
+        # if (not cls.has_tracked_tables()
+        #         and not cls.is_table_tracker_class()):
+        #     raise _NoTrackedTablesError()
 
     def audit_log_table_init(self):
         if hasattr(self, 'get_connection_and_cursor'):
@@ -605,7 +655,7 @@ class _BaseCreateTriggers(_SharedLogger):
         :rtype: bool
 
         """
-        return bool(cls.TABLES_TO_TRACK)
+        return bool(cls.TABLES_TO_TRACK) if hasattr(cls, 'TABLES_TO_TRACK') else False
 
     @property
     def has_audit_log_table(self):
@@ -711,12 +761,12 @@ class _BaseCreateTriggers(_SharedLogger):
 
         for table in self.__class__.TABLES_TO_TRACK:
             if not self._has_trigger(table):
-                trigger_create_counter =+ 1
+                trigger_create_counter = + 1
                 self.create_triggers_for_table(table, self._get_column_names(table))
                 self._logger.debug(f'triggers for {table} created')
                 print(f'triggers for {table} created')
             else:
-                already_created_counter =+ 1
+                already_created_counter = + 1
                 print(f'{table} already has triggers')
                 self._logger.debug(f'{table} already has triggers')
 
