@@ -455,6 +455,9 @@ class ABCCreateTriggers(ABCMeta, type):
     UPDATE_TRIGGER = None
     DELETE_TRIGGER = None
 
+    _MANDATORY_ATTRIBUTE_MISSING = 'missing'
+    _MANDATORY_ATTRIBUTE_UNDEFINED = 'undefined'
+
     @classmethod
     def _valid_value(cls, base_class, value):
         return (getattr(base_class, value) is not None
@@ -470,31 +473,45 @@ class ABCCreateTriggers(ABCMeta, type):
         return name_value_validation
 
     def __new__(cls, name, bases, dct):
-        # Ensure all child classes have a specific attribute
-
-        mandatory_class_attrs = [x for x in dir(cls) if not x.startswith('_') and x.isupper()]
-        # classes ACTUAL attrs
+        mandatory_class_attrs = cls._get_mandatory_class_attrs()
         name_value_validation_dict = cls.get_name_value_validation_dict(bases)
 
-        is_missing_class_attr = (list(name_value_validation_dict.keys()) != mandatory_class_attrs)
-        has_undefined_class_attr = not all(name_value_validation_dict.values())
-        failed_validation = [(x[0], 'undefined' if (not x[1] or len(x[1]) == 0) else 'missing')
-                             for x in name_value_validation_dict.items() if
-                             x[0] not in mandatory_class_attrs or not x[1]]
-        missing_entirely = [(x, 'missing') for x in mandatory_class_attrs
-                            if x not in name_value_validation_dict.keys()]
+        failed_validation = cls._validate_class_attributes(
+            mandatory_class_attrs,
+            name_value_validation_dict
+        )
 
-        # noinspection PyTypeChecker
-        failed_validation.extend(missing_entirely)
-        failed_validation = set(failed_validation)
+        if failed_validation:
+            raise TypeError(
+                f"{name} is missing the definition for these attributes: {list(failed_validation)}"
+            )
 
-        if is_missing_class_attr or has_undefined_class_attr:
-            raise TypeError(f"{name} is missing the definition for these attributes: {list(failed_validation)}")
-
-        # Call the parent (ABCMeta) __new__ method
         return super().__new__(cls, name, bases, dct)
 
+    @classmethod
+    def _get_mandatory_class_attrs(cls):
+        """Retrieve mandatory class attributes."""
+        return [attr for attr in dir(cls) if not attr.startswith('_') and attr.isupper()]
 
+    @classmethod
+    def _validate_class_attributes(cls, mandatory_attrs, name_value_dict):
+        """Validate class attributes and identify missing or undefined attributes."""
+        failed_validation = {
+            (attr, cls._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else cls._MANDATORY_ATTRIBUTE_MISSING)
+            for attr, value in name_value_dict.items()
+            if attr not in mandatory_attrs or not value
+        }
+
+        missing_attrs = {
+            (attr, cls._MANDATORY_ATTRIBUTE_MISSING)
+            for attr in mandatory_attrs
+            if attr not in name_value_dict
+        }
+
+        return failed_validation | missing_attrs
+
+
+# noinspection PyUnresolvedReferences
 class _BaseCreateTriggers(_SharedLogger):
     """
         Class for managing SQLite triggers and audit logging.
