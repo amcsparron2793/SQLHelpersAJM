@@ -1,37 +1,11 @@
-"""
-SQLHelpersAJM.py
-
-classes meant to streamline interaction with multiple different flavors of SQL database including MSSQL and SQLlite
-
-"""
-# pylint: disable=logging-fstring-interpolation
-# pylint: disable=no-member
-
-from abc import abstractmethod, ABCMeta
+from abc import abstractmethod
 from collections import ChainMap
-from typing import Optional, List, Union
-import logging
+from typing import Union, Optional, List
 
-from _backend import (deprecated,
-                      _NoCursorInitializedError,
-                      _NoResultsToConvertError,
-                      _NoTrackedTablesError,
-                      _MissingRequiredClassAttribute)
-from _version import __version__
-
-
-class _SharedLogger:
-    def _setup_logger(self, **kwargs) -> logging.Logger:
-        """
-        Sets up and returns a logger for the class.
-
-        :return: Configured logger instance.
-        :rtype: logging.Logger
-        """
-        logger = logging.getLogger(self.__class__.__name__)
-        if not logger.hasHandlers():
-            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
-        return logger
+from SQLHelpersAJM import _SharedLogger
+from SQLHelpersAJM._version import __version__
+from backend import deprecated, NoCursorInitializedError, NoResultsToConvertError, NoTrackedTablesError, \
+    MissingRequiredClassAttribute
 
 
 class BaseSQLHelper(_SharedLogger):
@@ -132,21 +106,34 @@ class BaseSQLHelper(_SharedLogger):
     @deprecated(
         "This method is deprecated and will be removed in a future release. "
         "Please use the get_connection_and_cursor method instead.")
-    def GetConnectionAndCursor(self):
+    def GetConnectionAndCursor(self, **kwargs):
         """
         :return: A tuple containing a database connection object and a cursor object.
         :rtype: tuple
 
         """
-        return self.get_connection_and_cursor()
+        return self.get_connection_and_cursor(**kwargs)
 
-    def get_connection_and_cursor(self):
+    def _force_connection_closed(self):
+        self._cursor.close()
+        self._connection.close()
+        self._logger.warning("forced connection and cursor to close")
+        self._connection, self._cursor = None, None
+
+    def get_connection_and_cursor(self, **kwargs):
         """
         Establishes and retrieves a database connection and its associated cursor object.
 
         :return: A tuple containing the database connection and the cursor object
         :rtype: tuple
         """
+        if self._cursor and self._connection:
+            if kwargs.get('force_new', False):
+                self._logger.debug("forcing new connection and cursor")
+                self._force_connection_closed()
+            else:
+                self._logger.debug("returning existing connection and cursor")
+                return self._connection, self._cursor
         try:
             self._logger.debug("getting connection and cursor")
             self._connection = self._connect()
@@ -167,8 +154,8 @@ class BaseSQLHelper(_SharedLogger):
         """
         if not self.is_ready_for_query:
             try:
-                raise _NoCursorInitializedError()
-            except _NoCursorInitializedError as e:
+                raise NoCursorInitializedError()
+            except NoCursorInitializedError as e:
                 self._logger.error(e, exc_info=True)
                 raise e from None
 
@@ -207,6 +194,14 @@ class BaseSQLHelper(_SharedLogger):
                 result = result[0]
         return result
 
+    def _fetch_results(self):
+        try:
+            res = self._cursor.fetchall()
+        except Exception as e:
+            self._logger.debug(e, exc_info=True)
+            res = []
+        return res
+
     def query(self, sql_string: str, **kwargs):
         """
         :param sql_string: The SQL query string to be executed.
@@ -219,7 +214,8 @@ class BaseSQLHelper(_SharedLogger):
             self.cursor_check()
             self._cursor.execute(sql_string)
 
-            res = self._cursor.fetchall()
+            res = self._fetch_results()
+
             if is_commit:
                 self._logger.info("committing changes")
                 self._connection.commit()
@@ -295,7 +291,7 @@ class BaseSQLHelper(_SharedLogger):
                 final_list_dict.append(dict(ChainMap(*row_list_dict)))
                 row_list_dict.clear()
             else:
-                raise _NoResultsToConvertError()
+                raise NoResultsToConvertError()
         if len(final_list_dict) > 0:
             # this returns a sorted list dict instead of an unsorted list dict
             return [dict(sorted(x.items())) for x in final_list_dict]
@@ -309,9 +305,9 @@ class BaseConnectionAttributes(BaseSQLHelper):
     or a provided connection string.
 
     Constants:
-    - TRUSTED_CONNECTION_DEFAULT: Default value for trusted connection, set to 'yes'.
-    - DRIVER_DEFAULT: Default driver, set to None.
-    - INSTANCE_DEFAULT: Default instance, set to 'SQLEXPRESS'.
+    - _TRUSTED_CONNECTION_DEFAULT: Default value for trusted connection, set to 'yes'.
+    - _DRIVER_DEFAULT: Default driver, set to None.
+    - _INSTANCE_DEFAULT: Default instance, set to 'SQLEXPRESS'.
 
     Methods:
     - __init__: Initializes the class and assign connection attributes.
@@ -328,12 +324,12 @@ class BaseConnectionAttributes(BaseSQLHelper):
     - trusted_connection: Specifies if a trusted connection is used. Defaults to 'yes'.
     - kwargs: Additional optional parameters, including 'logger', 'connection_string', 'username', and 'password'.
     """
-    TRUSTED_CONNECTION_DEFAULT = 'yes'
-    DRIVER_DEFAULT = None
-    INSTANCE_DEFAULT = 'SQLEXPRESS'
+    _TRUSTED_CONNECTION_DEFAULT = 'yes'
+    _DRIVER_DEFAULT = None
+    _INSTANCE_DEFAULT = 'SQLEXPRESS'
 
-    def __init__(self, server, database, instance=INSTANCE_DEFAULT, driver=DRIVER_DEFAULT,
-                 trusted_connection=TRUSTED_CONNECTION_DEFAULT, **kwargs):
+    def __init__(self, server, database, instance=_INSTANCE_DEFAULT, driver=_DRIVER_DEFAULT,
+                 trusted_connection=_TRUSTED_CONNECTION_DEFAULT, **kwargs):
         super().__init__(**kwargs)
         self._connection_string = kwargs.get('connection_string', None)
 
@@ -376,7 +372,7 @@ class BaseConnectionAttributes(BaseSQLHelper):
                 'instance': self.instance,
                 'database': self.database,
                 'driver': self.driver,
-                'username': self.username,
+                'username': self.username or '',
                 'password': 'WITHHELD or None',
                 'trusted_connection': self.trusted_connection}
 
@@ -447,109 +443,6 @@ class BaseConnectionAttributes(BaseSQLHelper):
         return cls(**cxn_attrs, **kwargs)
 
 
-class ABCCreateTriggers(ABCMeta, type):
-    """
-    ABCCreateTriggers is a metaclass that enforces the presence and validation of certain mandatory class attributes
-    for any class inheriting from it. This is designed to implement a structure where specific attributes
-    must be defined in the derived class with valid values.
-
-    Attributes:
-      TABLES_TO_TRACK: Attribute intended for tracking specific tables.
-      AUDIT_LOG_CREATE_TABLE: Attribute for audit log creation table.
-      AUDIT_LOG_CREATED_CHECK: Attribute to verify if an audit log was created.
-      HAS_TRIGGER_CHECK: Attribute for trigger existence verification.
-      GET_COLUMN_NAMES: Attribute to get column names.
-      INSERT_TRIGGER: Attribute for defining insert triggers.
-      UPDATE_TRIGGER: Attribute for defining update triggers.
-      DELETE_TRIGGER: Attribute for defining delete triggers.
-      _MANDATORY_ATTRIBUTE_MISSING: Internal constant representing a missing attribute.
-      _MANDATORY_ATTRIBUTE_UNDEFINED: Internal constant representing an undefined attribute.
-
-    Methods:
-      __new__(mcs, name, bases, dct):
-        This method is overridden to validate that all mandatory attributes are correctly defined in
-        the derived class. If any attributes are missing or have invalid values, a TypeError is raised.
-
-      _valid_value(mcs, base_class, value):
-        Class method that checks if a value associated with a mandatory attribute is valid. It ensures
-        the attribute is not None and has a non-zero length.
-
-      get_name_value_validation_dict(mcs, bases):
-        Class method that builds a name-value validation dictionary by inspecting the base classes.
-        This dictionary maps attribute names to their validity status.
-
-      _get_mandatory_class_attrs(mcs):
-        Retrieves all mandatory attributes by inspecting the class for uppercase attribute names
-        that do not start with an underscore.
-
-      _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
-        Validates the mandatory class attributes. If any of the required attributes are either
-        missing or undefined, they are added to the failed validation set. Returns the set of
-        attributes that failed validation, along with their validation statuses.
-    """
-    TABLES_TO_TRACK = None
-    AUDIT_LOG_CREATE_TABLE = None
-    AUDIT_LOG_CREATED_CHECK = None
-    HAS_TRIGGER_CHECK = None
-    GET_COLUMN_NAMES = None
-
-    INSERT_TRIGGER = None
-    UPDATE_TRIGGER = None
-    DELETE_TRIGGER = None
-
-    _MANDATORY_ATTRIBUTE_MISSING = 'missing'
-    _MANDATORY_ATTRIBUTE_UNDEFINED = 'undefined'
-
-    def __new__(mcs, name, bases, dct):
-        mandatory_class_attrs = mcs._get_mandatory_class_attrs()
-        name_value_validation_dict = mcs.get_name_value_validation_dict(bases)
-
-        failed_validation = mcs._validate_class_attributes(mandatory_class_attrs, name_value_validation_dict)
-
-        if failed_validation:
-            raise TypeError(
-                f"{name} is missing the definition for these attributes: {list(failed_validation)}"
-            )
-
-        return super().__new__(mcs, name, bases, dct)
-
-    @classmethod
-    def _valid_value(mcs, base_class, value):
-        return (getattr(base_class, value) is not None
-                and len(getattr(base_class, value)) > 0)
-
-    @classmethod
-    def get_name_value_validation_dict(mcs, bases):
-        name_value_validation = {}
-        for x in bases:
-            for y in dir(x):
-                if not y.startswith('_') and y.isupper():
-                    name_value_validation.update({y: mcs._valid_value(x, y)})
-        return name_value_validation
-
-    @classmethod
-    def _get_mandatory_class_attrs(mcs):
-        """Retrieve mandatory class attributes."""
-        return [attr for attr in dir(mcs) if not attr.startswith('_') and attr.isupper()]
-
-    @classmethod
-    def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
-        """Validate class attributes and identify missing or undefined attributes."""
-        failed_validation = {
-            (attr, mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
-            for attr, value in name_value_dict.items()
-            if attr not in mandatory_attrs or not value
-        }
-
-        missing_attrs = {
-            (attr, mcs._MANDATORY_ATTRIBUTE_MISSING)
-            for attr in mandatory_attrs
-            if attr not in name_value_dict
-        }
-
-        return failed_validation | missing_attrs
-
-
 # noinspection PyUnresolvedReferences
 class BaseCreateTriggers(_SharedLogger):
     """
@@ -558,23 +451,6 @@ class BaseCreateTriggers(_SharedLogger):
         This class extends `SQLlite3Helper` to handle the creation and management
         of database triggers that log changes (inserts, updates, and deletes) made
         on specific tables into an audit log table.
-
-        Attributes:
-        -----------
-        TABLES_TO_TRACK : list
-            A list of table names to generate audit triggers for.
-        AUDIT_LOG_CREATE_TABLE : str
-            SQL query to create the audit log table if it does not exist.
-        AUDIT_LOG_CREATED_CHECK : str
-            SQL query to check if the audit log table already exists.
-        HAS_TRIGGER_CHECK : str
-            SQL query used to check if a given table has triggers associated with it.
-        INSERT_TRIGGER : str
-            SQL template used to generate an INSERT trigger for a table.
-        UPDATE_TRIGGER : str
-            SQL template used to generate an UPDATE trigger for a table.
-        DELETE_TRIGGER : str
-            SQL template used to generate a DELETE trigger for a table.
 
         Methods:
         --------
@@ -627,7 +503,7 @@ class BaseCreateTriggers(_SharedLogger):
 
         :param kwargs: Additional keyword arguments passed to the subclass.
         :type kwargs: dict
-        :raises _NoTrackedTablesError: If the subclass is missing tracked tables configuration and is not a table tracker class.
+        :raises NoTrackedTablesError: If the subclass is missing tracked tables configuration and is not a table tracker class.
         :return: None
         :rtype: None
         """
@@ -637,10 +513,10 @@ class BaseCreateTriggers(_SharedLogger):
                                      and not cls.is_table_tracker_class())
 
         if is_missing_tracked_tables:
-            raise _NoTrackedTablesError()
+            raise NoTrackedTablesError()
         # if (not cls.has_tracked_tables()
         #         and not cls.is_table_tracker_class()):
-        #     raise _NoTrackedTablesError()
+        #     raise NoTrackedTablesError()
 
     def audit_log_table_init(self):
         """
@@ -650,15 +526,17 @@ class BaseCreateTriggers(_SharedLogger):
 
         :raise AttributeError: If the class does not have the method `get_connection_and_cursor`.
         """
-        if hasattr(self, 'get_connection_and_cursor'):
+        if (hasattr(self, 'get_connection_and_cursor')
+                and (not self._cursor or not self._connection)):
+            self._logger.info('attempting to connect and get cursor for audit_logging')
             self.get_connection_and_cursor()
-            if not self.has_audit_log_table:
-                self._create_audit_log_table()
-            else:
-                self._logger.info("audit_log_table detected.")
         else:
             raise AttributeError("improper subclassing, "
                                  "\'get_connection_and_cursor\' method is missing.")
+        if not self.has_audit_log_table:
+            self._create_audit_log_table()
+        else:
+            self._logger.info("audit_log_table detected.")
 
     @abstractmethod
     def _connect(self):
@@ -698,7 +576,7 @@ class BaseCreateTriggers(_SharedLogger):
         ...
 
     @abstractmethod
-    def GetConnectionAndCursor(self):
+    def GetConnectionAndCursor(self, **kwargs):
         """
         Fetches a new database connection and associated cursor.
 
@@ -708,7 +586,7 @@ class BaseCreateTriggers(_SharedLogger):
         ...
 
     @abstractmethod
-    def get_connection_and_cursor(self):
+    def get_connection_and_cursor(self, **kwargs):
         """
         Return a connection object and a cursor object for database interaction.
 
@@ -735,11 +613,11 @@ class BaseCreateTriggers(_SharedLogger):
         The method iterates through a list of required class attributes defined in `self.required_class_attributes`
         and verifies if each attribute exists in the current instance and is not None. If all required attributes are
         present and valid, it logs a debug message indicating their status and returns True. Otherwise, it raises
-        an exception `_MissingRequiredClassAttribute`.
+        an exception `MissingRequiredClassAttribute`.
 
         :return: True if all required class attributes are set and not None
         :rtype: bool
-        :raises _MissingRequiredClassAttribute: If one or more required class attributes are missing or None
+        :raises MissingRequiredClassAttribute: If one or more required class attributes are missing or None
         """
         class_attr = [(hasattr(self, x) and getattr(self, x) is not None)
                       for x in self.required_class_attributes]
@@ -748,7 +626,7 @@ class BaseCreateTriggers(_SharedLogger):
             self._logger.debug(f"All {len(self.required_class_attributes)} "
                                f"required class attributes are set.")
             return True
-        raise _MissingRequiredClassAttribute()
+        raise MissingRequiredClassAttribute()
 
     @property
     def required_class_attributes(self):

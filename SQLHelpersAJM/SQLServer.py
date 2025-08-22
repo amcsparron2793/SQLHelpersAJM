@@ -1,123 +1,97 @@
 # pylint: disable=line-too-long
 # pylint: disable=import-error
+from abc import abstractmethod
 
 import pyodbc
-from SQLHelpersAJM import BaseConnectionAttributes
+from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
+from backend import ABCCreateTriggers
+
+
+# noinspection SqlResolve,SqlIdentifier
+class _SQLServerTableTracker(BaseCreateTriggers):
+    TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
+    AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log
+(
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    table_name NVARCHAR(255) NOT NULL,
+    operation NVARCHAR(50) NOT NULL,
+    old_row_data NVARCHAR(MAX),
+    new_row_data NVARCHAR(MAX),
+    change_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);"""
+    AUDIT_LOG_CREATED_CHECK = """SELECT TABLE_NAME 
+FROM INFORMATION_SCHEMA.TABLES 
+WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME = 'audit_log';"""
+    HAS_TRIGGER_CHECK = """SELECT name 
+FROM sys.triggers 
+WHERE parent_id = OBJECT_ID('{table}');"""
+    GET_COLUMN_NAMES = """SELECT COLUMN_NAME 
+FROM INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = '{table}';"""
+
+    INSERT_TRIGGER = """CREATE TRIGGER after_{table_name}_insert
+ON {table_name}
+AFTER INSERT
+AS
+BEGIN
+    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+    SELECT 
+        '{table_name}' AS table_name, 
+        'INSERT' AS operation, 
+        NULL AS old_row_data, 
+        (SELECT * FROM INSERTED FOR JSON AUTO) AS new_row_json
+    FROM INSERTED;
+END;"""
+    UPDATE_TRIGGER = """CREATE TRIGGER after_{table_name}_update
+ON {table_name}
+AFTER UPDATE
+AS
+BEGIN
+    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+    SELECT 
+        '{table_name}' AS table_name, 
+        'UPDATE' AS operation,  
+        (SELECT * FROM DELETED FOR JSON AUTO) AS old_row_json, 
+        (SELECT * FROM INSERTED FOR JSON AUTO) AS new_row_json
+    FROM INSERTED 
+    INNER JOIN DELETED 
+    ON INSERTED.id = DELETED.id;
+END;"""
+    # noinspection SqlWithoutWhere
+    DELETE_TRIGGER = """CREATE TRIGGER after_{table_name}_delete
+ON {table_name}
+AFTER DELETE
+AS
+BEGIN
+    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+    SELECT 
+        '{table_name}' AS table_name, 
+        'DELETE' AS operation,  
+        (SELECT * FROM DELETED FOR JSON AUTO) AS old_row_json, 
+        NULL AS new_row_json
+    FROM DELETED;
+END;"""
+
+    @abstractmethod
+    def _connect(self):
+        ...
 
 
 class SQLServerHelper(BaseConnectionAttributes):
     """
-    A helper class to interact with an SQL Server database using pyodbc.
-    Provides utility methods for connection management, executing queries, and formatting query results.
+    This class provides methods and attributes to facilitate interactions with a SQL Server database.
 
-    class SQLServerHelper:
-        __init__(self, server=None, database=None, driver='{SQL Server}', **kwargs):
-            Initializes the SQLServerHelper instance with optional server, database, and driver attributes.
-            Optionally uses a provided connection string to populate attributes.
-
-            :param server: The SQL Server address. Defaults to None.
-            :type server: str, optional
-            :param database: The database name. Defaults to None.
-            :type database: str, optional
-            :param driver: The name of the ODBC driver. Defaults to '{SQL Server}'.
-            :type driver: str, optional
-            :param kwargs: Additional attributes, including a logger or a connection string.
-
-        connection_string
-            Constructs and returns the connection string if required attributes are provided.
-
-            :return: The constructed connection string composed of driver, server, and database information.
-            :rtype: str
-
-        is_ready_for_query
-            Determines if the instance is ready to execute a query.
-
-            :return: True if the cursor object exists, otherwise False
-            :rtype: bool
-
-        with_connection_string(cls, connection_string: Optional[str],
-                                attr_split_char: str = ';', key_value_split_char: str = '=', **kwargs):
-            Initializes a class instance by extracting attributes from a provided connection string.
-            Raises an error if the connection string is not provided.
-
-            :param connection_string: A string containing the connection attributes separated by attr_split_char
-                and key-value pairs separated by key_value_split_char. This parameter is mandatory and cannot be None.
-            :type connection_string: Optional[str]
-            :param attr_split_char: The character used to split the connection attributes in the connection_string.
-                Default is ';'.
-            :type attr_split_char: str
-            :param key_value_split_char: The character used to separate keys and values in
-                each connection attribute in the connection_string. Default is '='.
-            :type key_value_split_char: str
-            :param kwargs: Additional keyword arguments to be passed during the initialization of the class.
-            :return: An instance of the class initialized with the attributes parsed from the connection_string
-                and additional keyword arguments.
-            :rtype: cls
-
-        cursor_check(self):
-            Checks if the cursor is properly initialized and ready for executing queries.
-            If the cursor is not initialized, it raises a `NoCursorInitializedError`, logs the error, and rethrows it.
-
-            :return: None
-            :rtype: None
-
-        get_connection_and_cursor(self):
-            Establishes and retrieves a database connection and its associated cursor object.
-
-            :return: A tuple containing the database connection and the cursor object
-            :rtype: tuple
-
-        _connect(self):
-            Establishes a connection to a database using the specified connection string.
-
-            :return: A connection object if the connection is successful.
-            :rtype: pyodbc.Connection
-            :raises pyodbc.Error: If there is an error while attempting to connect to the database.
-
-        query(self, sql_string: str):
-            Executes the provided SQL query string after initializing the cursor.
-
-            :param sql_string: The SQL query string to be executed.
-            :type sql_string: str
-            :return: None
-            :rtype: None
-
-        query_results(self) -> Optional[List[tuple]]:
-            Retrieves the query results stored in the object.
-
-            :return: The query results as a list of tuples or None if no results are available.
-            :rtype: Optional[List[tuple]]
-
-        query_results(self, value: List[dict] or None):
-            Sets the query results stored in the object.
-
-            :param value: The list of dictionaries containing query results or None to reset the results.
-            :type value: List[dict] or None
-
-        list_dict_results(self):
-            Converts the query results into a list of dictionaries.
-
-            :return: A list of dictionaries obtained from the processed query results,
-                or None if no query results are available.
-            :rtype: list[dict] or None
-
-        results_column_names(self) -> List[str] or None:
-            Retrieves the column names of the query results if available.
-
-            :return: A list of column names or None if the cursor description is not available.
-            :rtype: List[str] or None
-
-        _ConvertToFinalListDict(self, results: List[tuple]) -> List[dict] or None:
-            Converts a list of tuples representing query results into a list of dictionaries.
-                Maps each tuple's values to its corresponding column names.
-
-            :param results: A list of tuples where each tuple represents a row of data.
-            :type results: List[tuple]
-            :return: A sorted list of dictionaries, where each dictionary corresponds to a row of data,
-                or None if no valid data exists.
-            :rtype: List[dict] or None
+    It inherits from `BaseConnectionAttributes`, and it is used for establishing and managing
+    database connections by leveraging the pyodbc library.
     """
-    DRIVER_DEFAULT = '{SQL Server}'
+    _DRIVER_DEFAULT = '{SQL Server}'
+
+    def __init__(self, server, database, driver=_DRIVER_DEFAULT, **kwargs):
+        self.server = server
+        self.database = database
+        self.driver = driver
+        self._logger = self._setup_logger(**kwargs)
+        super().__init__(self.server, self.database, driver=self.driver, **kwargs)
 
     def _connect(self):
         """
@@ -137,13 +111,48 @@ class SQLServerHelper(BaseConnectionAttributes):
         return '0.0.1'
 
 
+class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCreateTriggers):
+    TABLES_TO_TRACK = []
+
+    def __init__(self, server, database, **kwargs):
+        super().__init__(server, database, **kwargs)
+        _SQLServerTableTracker.__init__(self, **kwargs)
+
+    @property
+    def __version__(self):
+        return "0.0.1"
+
+
 if __name__ == '__main__':
+    # noinspection SpellCheckingInspection
     gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
-                                  "database=gisprod;"
+                                  "database=AndrewTest;"
                                   "trusted_connection=yes;username=sa;password=")
     #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
     #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
-    sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
-    sql_srv.get_connection_and_cursor()
-    sql_srv.query("select SYSTEM_USER")
-    print(sql_srv.query_results)
+    #sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
+    #sql_srv.get_connection_and_cursor()
+    sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
+    #sql_srv.query("select SYSTEM_USER")
+    #sql_srv.query("insert into AndrewTestTable(FirstName, LastName) VALUES ('andrew', 'mcsparron') --returning id;", is_commit=True)
+    #sql_srv.generate_triggers_for_all_tables()
+#     sql_srv.query("""SELECT
+#     t.name AS TriggerName,
+#     t.is_disabled AS IsDisabled,
+#     s.name AS SchemaName,
+#     o.name AS TableName,
+#     o.type_desc AS ObjectType,
+#     t.create_date AS CreatedDate,
+#     t.modify_date AS LastModifiedDate
+# FROM
+#     sys.triggers AS t
+# JOIN
+#     sys.objects AS o ON t.parent_id = o.object_id
+# JOIN
+#     sys.schemas AS s ON o.schema_id = s.schema_id
+# WHERE
+#     t.type_desc = 'SQL_TRIGGER'
+# ORDER BY
+#     t.name;""", is_commit=False)
+    #sql_srv.query("select * from audit_log;", is_commit=False)
+    #print(sql_srv.query_results)
