@@ -112,7 +112,7 @@ class SQLServerHelper(BaseConnectionAttributes):
 
 
 class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCreateTriggers):
-    TABLES_TO_TRACK = ['AndrewTestTable']
+    TABLES_TO_TRACK = []
 
     def __init__(self, server, database, **kwargs):
         super().__init__(server, database, **kwargs)
@@ -154,5 +154,5 @@ if __name__ == '__main__':
 #     t.type_desc = 'SQL_TRIGGER'
 # ORDER BY
 #     t.name;""", is_commit=False)
-    sql_srv.query("select * from audit_log;", is_commit=False)
-    print(sql_srv.query_results)
+    #sql_srv.query("select * from audit_log;", is_commit=False)
+    #print(sql_srv.query_results)
