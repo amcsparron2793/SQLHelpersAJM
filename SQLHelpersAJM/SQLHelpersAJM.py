@@ -12,11 +12,11 @@ from collections import ChainMap
 from typing import Optional, List, Union
 import logging
 
-from _backend import (deprecated,
-                      _NoCursorInitializedError,
-                      _NoResultsToConvertError,
-                      _NoTrackedTablesError,
-                      _MissingRequiredClassAttribute)
+from backend.backend import (deprecated,
+                             NoCursorInitializedError,
+                             NoResultsToConvertError,
+                             NoTrackedTablesError,
+                             MissingRequiredClassAttribute)
 from _version import __version__
 
 
@@ -168,8 +168,8 @@ class BaseSQLHelper(_SharedLogger):
         """
         if not self.is_ready_for_query:
             try:
-                raise _NoCursorInitializedError()
-            except _NoCursorInitializedError as e:
+                raise NoCursorInitializedError()
+            except NoCursorInitializedError as e:
                 self._logger.error(e, exc_info=True)
                 raise e from None
 
@@ -296,7 +296,7 @@ class BaseSQLHelper(_SharedLogger):
                 final_list_dict.append(dict(ChainMap(*row_list_dict)))
                 row_list_dict.clear()
             else:
-                raise _NoResultsToConvertError()
+                raise NoResultsToConvertError()
         if len(final_list_dict) > 0:
             # this returns a sorted list dict instead of an unsorted list dict
             return [dict(sorted(x.items())) for x in final_list_dict]
@@ -536,7 +536,8 @@ class ABCCreateTriggers(ABCMeta, type):
     def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
         """Validate class attributes and identify missing or undefined attributes."""
         failed_validation = {
-            (attr, mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
+            (attr,
+             mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
             for attr, value in name_value_dict.items()
             if attr not in mandatory_attrs or not value
         }
@@ -627,7 +628,7 @@ class BaseCreateTriggers(_SharedLogger):
 
         :param kwargs: Additional keyword arguments passed to the subclass.
         :type kwargs: dict
-        :raises _NoTrackedTablesError: If the subclass is missing tracked tables configuration and is not a table tracker class.
+        :raises NoTrackedTablesError: If the subclass is missing tracked tables configuration and is not a table tracker class.
         :return: None
         :rtype: None
         """
@@ -637,10 +638,10 @@ class BaseCreateTriggers(_SharedLogger):
                                      and not cls.is_table_tracker_class())
 
         if is_missing_tracked_tables:
-            raise _NoTrackedTablesError()
+            raise NoTrackedTablesError()
         # if (not cls.has_tracked_tables()
         #         and not cls.is_table_tracker_class()):
-        #     raise _NoTrackedTablesError()
+        #     raise NoTrackedTablesError()
 
     def audit_log_table_init(self):
         """
@@ -735,11 +736,11 @@ class BaseCreateTriggers(_SharedLogger):
         The method iterates through a list of required class attributes defined in `self.required_class_attributes`
         and verifies if each attribute exists in the current instance and is not None. If all required attributes are
         present and valid, it logs a debug message indicating their status and returns True. Otherwise, it raises
-        an exception `_MissingRequiredClassAttribute`.
+        an exception `MissingRequiredClassAttribute`.
 
         :return: True if all required class attributes are set and not None
         :rtype: bool
-        :raises _MissingRequiredClassAttribute: If one or more required class attributes are missing or None
+        :raises MissingRequiredClassAttribute: If one or more required class attributes are missing or None
         """
         class_attr = [(hasattr(self, x) and getattr(self, x) is not None)
                       for x in self.required_class_attributes]
@@ -748,7 +749,7 @@ class BaseCreateTriggers(_SharedLogger):
             self._logger.debug(f"All {len(self.required_class_attributes)} "
                                f"required class attributes are set.")
             return True
-        raise _MissingRequiredClassAttribute()
+        raise MissingRequiredClassAttribute()
 
     @property
     def required_class_attributes(self):
