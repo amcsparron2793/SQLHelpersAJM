@@ -195,6 +195,14 @@ class BaseSQLHelper(_SharedLogger):
                 result = result[0]
         return result
 
+    def _fetch_results(self):
+        try:
+            res = self._cursor.fetchall()
+        except Exception as e:
+            self._logger.debug(e, exc_info=True)
+            res = []
+        return res
+
     def query(self, sql_string: str, **kwargs):
         """
         :param sql_string: The SQL query string to be executed.
@@ -206,12 +214,9 @@ class BaseSQLHelper(_SharedLogger):
         try:
             self.cursor_check()
             self._cursor.execute(sql_string)
-            # TODO: pull this into its own submethod
-            try:
-                res = self._cursor.fetchall()
-            except Exception as e:
-                self._logger.debug(e, exc_info=True)
-                res = []
+
+            res = self._fetch_results()
+
             if is_commit:
                 self._logger.info("committing changes")
                 self._connection.commit()
