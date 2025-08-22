@@ -4,6 +4,7 @@ from abc import abstractmethod
 
 import pyodbc
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
+from backend import ABCCreateTriggers
 
 
 # noinspection SqlResolve,SqlIdentifier
@@ -83,7 +84,14 @@ class SQLServerHelper(BaseConnectionAttributes):
     It inherits from `BaseConnectionAttributes`, and it is used for establishing and managing
     database connections by leveraging the pyodbc library.
     """
-    DRIVER_DEFAULT = '{SQL Server}'
+    _DRIVER_DEFAULT = '{SQL Server}'
+
+    def __init__(self, server, database, driver=_DRIVER_DEFAULT, **kwargs):
+        self.server = server
+        self.database = database
+        self.driver = driver
+        self._logger = self._setup_logger(**kwargs)
+        super().__init__(self.server, self.database,driver=self.driver, **kwargs)
 
     def _connect(self):
         """
@@ -103,14 +111,27 @@ class SQLServerHelper(BaseConnectionAttributes):
         return '0.0.1'
 
 
+class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCreateTriggers):
+    TABLES_TO_TRACK = []
+
+    def __init__(self, server, database, **kwargs):
+        super().__init__(server, database, **kwargs)
+        _SQLServerTableTracker.__init__(self, **kwargs)
+
+    @property
+    def __version__(self):
+        return "0.0.1"
+
+
 if __name__ == '__main__':
     # noinspection SpellCheckingInspection
     gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
                                   "database=gisprod;"
                                   "trusted_connection=yes;username=sa;password=")
     #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
-    #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
-    sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
+    sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
+    #sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
     sql_srv.get_connection_and_cursor()
+    #sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
     sql_srv.query("select SYSTEM_USER")
     print(sql_srv.query_results)

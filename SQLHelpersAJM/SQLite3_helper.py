@@ -176,14 +176,14 @@ class SQLite3Helper(BaseSQLHelper):
         self._logger.debug("PRAGMA foreign_keys set to ON")
         self._connection.commit()
 
-    def get_connection_and_cursor(self):
+    def get_connection_and_cursor(self, **kwargs):
         """
         Establishes a database connection and retrieves a cursor. Ensures that foreign key constraints are enforced by calling a specific method to activate them.
 
         :return: A tuple containing the database connection object and cursor.
         :rtype: tuple
         """
-        self._connection, self._cursor = super().get_connection_and_cursor()
+        self._connection, self._cursor = super().get_connection_and_cursor(**kwargs)
         self._set_foreign_keys_on()
         return self._connection, self._cursor
 

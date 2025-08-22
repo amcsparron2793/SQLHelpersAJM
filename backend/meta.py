@@ -58,7 +58,8 @@ class ABCCreateTriggers(ABCMeta, type):
         mandatory_class_attrs = mcs._get_mandatory_class_attrs()
         name_value_validation_dict = mcs.get_name_value_validation_dict(bases)
 
-        failed_validation = mcs._validate_class_attributes(mandatory_class_attrs, name_value_validation_dict)
+        failed_validation = mcs._validate_class_attributes(mandatory_class_attrs,
+                                                           name_value_validation_dict)
 
         if failed_validation:
             raise TypeError(
@@ -69,8 +70,12 @@ class ABCCreateTriggers(ABCMeta, type):
 
     @classmethod
     def _valid_value(mcs, base_class, value):
-        return (getattr(base_class, value) is not None
-                and len(getattr(base_class, value)) > 0)
+        # Retrieve the actual value of the attribute from the base class
+        attr_value = getattr(base_class, value, None)
+        # Ensure the attribute has a length and is not None (but avoid calling len() on bool or None)
+        return (attr_value is not None and not isinstance(attr_value, bool)
+                and hasattr(attr_value, '__len__') and len(
+            attr_value) > 0)
 
     @classmethod
     def get_name_value_validation_dict(mcs, bases):
@@ -84,22 +89,22 @@ class ABCCreateTriggers(ABCMeta, type):
     @classmethod
     def _get_mandatory_class_attrs(mcs):
         """Retrieve mandatory class attributes."""
-        return [attr for attr in dir(mcs) if not attr.startswith('_') and attr.isupper()]
+        return [attr for attr in mcs.__dict__ if not attr.startswith('_') and attr.isupper()]
 
     @classmethod
     def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
         """Validate class attributes and identify missing or undefined attributes."""
         failed_validation = {
             (attr,
-             mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
+             mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value
+             else mcs._MANDATORY_ATTRIBUTE_MISSING)
             for attr, value in name_value_dict.items()
             if attr not in mandatory_attrs or not value
         }
 
-        missing_attrs = {
-            (attr, mcs._MANDATORY_ATTRIBUTE_MISSING)
-            for attr in mandatory_attrs
-            if attr not in name_value_dict
-        }
+        # Add any mandatory attributes that are completely missing from `name_value_dict`
+        for attr in mandatory_attrs:
+            if attr not in name_value_dict:
+                failed_validation.add((attr, mcs._MANDATORY_ATTRIBUTE_MISSING))
 
-        return failed_validation | missing_attrs
+        return failed_validation

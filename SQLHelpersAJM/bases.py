@@ -106,21 +106,34 @@ class BaseSQLHelper(_SharedLogger):
     @deprecated(
         "This method is deprecated and will be removed in a future release. "
         "Please use the get_connection_and_cursor method instead.")
-    def GetConnectionAndCursor(self):
+    def GetConnectionAndCursor(self, **kwargs):
         """
         :return: A tuple containing a database connection object and a cursor object.
         :rtype: tuple
 
         """
-        return self.get_connection_and_cursor()
+        return self.get_connection_and_cursor(**kwargs)
 
-    def get_connection_and_cursor(self):
+    def _force_connection_closed(self):
+        self._cursor.close()
+        self._connection.close()
+        self._logger.warning("forced connection and cursor to close")
+        self._connection, self._cursor = None, None
+
+    def get_connection_and_cursor(self, **kwargs):
         """
         Establishes and retrieves a database connection and its associated cursor object.
 
         :return: A tuple containing the database connection and the cursor object
         :rtype: tuple
         """
+        if self._cursor and self._connection:
+            if kwargs.get('force_new', False):
+                self._logger.debug("forcing new connection and cursor")
+                self._force_connection_closed()
+            else:
+                self._logger.debug("returning existing connection and cursor")
+                return self._connection, self._cursor
         try:
             self._logger.debug("getting connection and cursor")
             self._connection = self._connect()
@@ -284,9 +297,9 @@ class BaseConnectionAttributes(BaseSQLHelper):
     or a provided connection string.
 
     Constants:
-    - TRUSTED_CONNECTION_DEFAULT: Default value for trusted connection, set to 'yes'.
-    - DRIVER_DEFAULT: Default driver, set to None.
-    - INSTANCE_DEFAULT: Default instance, set to 'SQLEXPRESS'.
+    - _TRUSTED_CONNECTION_DEFAULT: Default value for trusted connection, set to 'yes'.
+    - _DRIVER_DEFAULT: Default driver, set to None.
+    - _INSTANCE_DEFAULT: Default instance, set to 'SQLEXPRESS'.
 
     Methods:
     - __init__: Initializes the class and assign connection attributes.
@@ -303,12 +316,12 @@ class BaseConnectionAttributes(BaseSQLHelper):
     - trusted_connection: Specifies if a trusted connection is used. Defaults to 'yes'.
     - kwargs: Additional optional parameters, including 'logger', 'connection_string', 'username', and 'password'.
     """
-    TRUSTED_CONNECTION_DEFAULT = 'yes'
-    DRIVER_DEFAULT = None
-    INSTANCE_DEFAULT = 'SQLEXPRESS'
+    _TRUSTED_CONNECTION_DEFAULT = 'yes'
+    _DRIVER_DEFAULT = None
+    _INSTANCE_DEFAULT = 'SQLEXPRESS'
 
-    def __init__(self, server, database, instance=INSTANCE_DEFAULT, driver=DRIVER_DEFAULT,
-                 trusted_connection=TRUSTED_CONNECTION_DEFAULT, **kwargs):
+    def __init__(self, server, database, instance=_INSTANCE_DEFAULT, driver=_DRIVER_DEFAULT,
+                 trusted_connection=_TRUSTED_CONNECTION_DEFAULT, **kwargs):
         super().__init__(**kwargs)
         self._connection_string = kwargs.get('connection_string', None)
 
@@ -350,7 +363,7 @@ class BaseConnectionAttributes(BaseSQLHelper):
                 'instance': self.instance,
                 'database': self.database,
                 'driver': self.driver,
-                'username': self.username,
+                'username': self.username or '',
                 'password': 'WITHHELD or None',
                 'trusted_connection': self.trusted_connection}
 
@@ -504,15 +517,17 @@ class BaseCreateTriggers(_SharedLogger):
 
         :raise AttributeError: If the class does not have the method `get_connection_and_cursor`.
         """
-        if hasattr(self, 'get_connection_and_cursor'):
+        if (hasattr(self, 'get_connection_and_cursor')
+                and (not self._cursor or not self._connection)):
+            self._logger.info('attempting to connect and get cursor for audit_logging')
             self.get_connection_and_cursor()
-            if not self.has_audit_log_table:
-                self._create_audit_log_table()
-            else:
-                self._logger.info("audit_log_table detected.")
         else:
             raise AttributeError("improper subclassing, "
                                  "\'get_connection_and_cursor\' method is missing.")
+        if not self.has_audit_log_table:
+            self._create_audit_log_table()
+        else:
+            self._logger.info("audit_log_table detected.")
 
     @abstractmethod
     def _connect(self):
@@ -552,7 +567,7 @@ class BaseCreateTriggers(_SharedLogger):
         ...
 
     @abstractmethod
-    def GetConnectionAndCursor(self):
+    def GetConnectionAndCursor(self, **kwargs):
         """
         Fetches a new database connection and associated cursor.
 
@@ -562,7 +577,7 @@ class BaseCreateTriggers(_SharedLogger):
         ...
 
     @abstractmethod
-    def get_connection_and_cursor(self):
+    def get_connection_and_cursor(self, **kwargs):
         """
         Return a connection object and a cursor object for database interaction.
 
