@@ -91,7 +91,7 @@ class SQLServerHelper(BaseConnectionAttributes):
         self.database = database
         self.driver = driver
         self._logger = self._setup_logger(**kwargs)
-        super().__init__(self.server, self.database,driver=self.driver, **kwargs)
+        super().__init__(self.server, self.database, driver=self.driver, **kwargs)
 
     def _connect(self):
         """
@@ -112,7 +112,7 @@ class SQLServerHelper(BaseConnectionAttributes):
 
 
 class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCreateTriggers):
-    TABLES_TO_TRACK = []
+    TABLES_TO_TRACK = ['AndrewTestTable']
 
     def __init__(self, server, database, **kwargs):
         super().__init__(server, database, **kwargs)
@@ -126,12 +126,33 @@ class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCr
 if __name__ == '__main__':
     # noinspection SpellCheckingInspection
     gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
-                                  "database=gisprod;"
+                                  "database=AndrewTest;"
                                   "trusted_connection=yes;username=sa;password=")
     #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
-    sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
+    #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
     #sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
-    sql_srv.get_connection_and_cursor()
-    #sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
-    sql_srv.query("select SYSTEM_USER")
+    #sql_srv.get_connection_and_cursor()
+    sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
+    #sql_srv.query("select SYSTEM_USER")
+    #sql_srv.query("insert into AndrewTestTable(FirstName, LastName) VALUES ('andrew', 'mcsparron') --returning id;", is_commit=True)
+    #sql_srv.generate_triggers_for_all_tables()
+#     sql_srv.query("""SELECT
+#     t.name AS TriggerName,
+#     t.is_disabled AS IsDisabled,
+#     s.name AS SchemaName,
+#     o.name AS TableName,
+#     o.type_desc AS ObjectType,
+#     t.create_date AS CreatedDate,
+#     t.modify_date AS LastModifiedDate
+# FROM
+#     sys.triggers AS t
+# JOIN
+#     sys.objects AS o ON t.parent_id = o.object_id
+# JOIN
+#     sys.schemas AS s ON o.schema_id = s.schema_id
+# WHERE
+#     t.type_desc = 'SQL_TRIGGER'
+# ORDER BY
+#     t.name;""", is_commit=False)
+    sql_srv.query("select * from audit_log;", is_commit=False)
     print(sql_srv.query_results)

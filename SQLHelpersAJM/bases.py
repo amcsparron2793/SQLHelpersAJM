@@ -206,8 +206,12 @@ class BaseSQLHelper(_SharedLogger):
         try:
             self.cursor_check()
             self._cursor.execute(sql_string)
-
-            res = self._cursor.fetchall()
+            # TODO: pull this into its own submethod
+            try:
+                res = self._cursor.fetchall()
+            except Exception as e:
+                self._logger.debug(e, exc_info=True)
+                res = []
             if is_commit:
                 self._logger.info("committing changes")
                 self._connection.commit()
