@@ -2,7 +2,8 @@ import sqlite3
 from abc import abstractmethod
 from typing import Union
 from pathlib import Path
-from SQLHelpersAJM import BaseSQLHelper, BaseCreateTriggers, ABCCreateTriggers
+from SQLHelpersAJM import BaseSQLHelper, BaseCreateTriggers
+from backend import ABCCreateTriggers
 
 
 class _SQLlite3TableTracker(BaseCreateTriggers):
@@ -112,7 +113,7 @@ class SQLlite3Helper(BaseSQLHelper):
 
 
 class SQLite3HelperTT(SQLlite3Helper, _SQLlite3TableTracker, metaclass=ABCCreateTriggers):
-    TABLES_TO_TRACK = ['test_table']
+    TABLES_TO_TRACK = ['test_table'],
 
     def __init__(self, db_file_path: Union[str, Path], **kwargs):
         super().__init__(db_file_path, **kwargs)

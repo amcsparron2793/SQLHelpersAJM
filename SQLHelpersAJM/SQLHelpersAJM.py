@@ -7,16 +7,13 @@ classes meant to streamline interaction with multiple different flavors of SQL d
 # pylint: disable=logging-fstring-interpolation
 # pylint: disable=no-member
 
-from abc import abstractmethod, ABCMeta
+from abc import abstractmethod
 from collections import ChainMap
 from typing import Optional, List, Union
 import logging
 
-from backend.backend import (deprecated,
-                             NoCursorInitializedError,
-                             NoResultsToConvertError,
-                             NoTrackedTablesError,
-                             MissingRequiredClassAttribute)
+from backend import (MissingRequiredClassAttribute, NoTrackedTablesError,
+                     NoCursorInitializedError, NoResultsToConvertError, deprecated)
 from _version import __version__
 
 
@@ -445,110 +442,6 @@ class BaseConnectionAttributes(BaseSQLHelper):
                                                          attr_split_char,
                                                          key_value_split_char)
         return cls(**cxn_attrs, **kwargs)
-
-
-class ABCCreateTriggers(ABCMeta, type):
-    """
-    ABCCreateTriggers is a metaclass that enforces the presence and validation of certain mandatory class attributes
-    for any class inheriting from it. This is designed to implement a structure where specific attributes
-    must be defined in the derived class with valid values.
-
-    Attributes:
-      TABLES_TO_TRACK: Attribute intended for tracking specific tables.
-      AUDIT_LOG_CREATE_TABLE: Attribute for audit log creation table.
-      AUDIT_LOG_CREATED_CHECK: Attribute to verify if an audit log was created.
-      HAS_TRIGGER_CHECK: Attribute for trigger existence verification.
-      GET_COLUMN_NAMES: Attribute to get column names.
-      INSERT_TRIGGER: Attribute for defining insert triggers.
-      UPDATE_TRIGGER: Attribute for defining update triggers.
-      DELETE_TRIGGER: Attribute for defining delete triggers.
-      _MANDATORY_ATTRIBUTE_MISSING: Internal constant representing a missing attribute.
-      _MANDATORY_ATTRIBUTE_UNDEFINED: Internal constant representing an undefined attribute.
-
-    Methods:
-      __new__(mcs, name, bases, dct):
-        This method is overridden to validate that all mandatory attributes are correctly defined in
-        the derived class. If any attributes are missing or have invalid values, a TypeError is raised.
-
-      _valid_value(mcs, base_class, value):
-        Class method that checks if a value associated with a mandatory attribute is valid. It ensures
-        the attribute is not None and has a non-zero length.
-
-      get_name_value_validation_dict(mcs, bases):
-        Class method that builds a name-value validation dictionary by inspecting the base classes.
-        This dictionary maps attribute names to their validity status.
-
-      _get_mandatory_class_attrs(mcs):
-        Retrieves all mandatory attributes by inspecting the class for uppercase attribute names
-        that do not start with an underscore.
-
-      _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
-        Validates the mandatory class attributes. If any of the required attributes are either
-        missing or undefined, they are added to the failed validation set. Returns the set of
-        attributes that failed validation, along with their validation statuses.
-    """
-    TABLES_TO_TRACK = None
-    AUDIT_LOG_CREATE_TABLE = None
-    AUDIT_LOG_CREATED_CHECK = None
-    HAS_TRIGGER_CHECK = None
-    GET_COLUMN_NAMES = None
-
-    INSERT_TRIGGER = None
-    UPDATE_TRIGGER = None
-    DELETE_TRIGGER = None
-
-    _MANDATORY_ATTRIBUTE_MISSING = 'missing'
-    _MANDATORY_ATTRIBUTE_UNDEFINED = 'undefined'
-
-    def __new__(mcs, name, bases, dct):
-        mandatory_class_attrs = mcs._get_mandatory_class_attrs()
-        name_value_validation_dict = mcs.get_name_value_validation_dict(bases)
-
-        failed_validation = mcs._validate_class_attributes(mandatory_class_attrs, name_value_validation_dict)
-
-        if failed_validation:
-            raise TypeError(
-                f"{name} is missing the definition for these attributes: {list(failed_validation)}"
-            )
-
-        return super().__new__(mcs, name, bases, dct)
-
-    @classmethod
-    def _valid_value(mcs, base_class, value):
-        return (getattr(base_class, value) is not None
-                and len(getattr(base_class, value)) > 0)
-
-    @classmethod
-    def get_name_value_validation_dict(mcs, bases):
-        name_value_validation = {}
-        for x in bases:
-            for y in dir(x):
-                if not y.startswith('_') and y.isupper():
-                    name_value_validation.update({y: mcs._valid_value(x, y)})
-        return name_value_validation
-
-    @classmethod
-    def _get_mandatory_class_attrs(mcs):
-        """Retrieve mandatory class attributes."""
-        return [attr for attr in dir(mcs) if not attr.startswith('_') and attr.isupper()]
-
-    @classmethod
-    def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
-        """Validate class attributes and identify missing or undefined attributes."""
-        failed_validation = {
-            (attr,
-             mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
-            for attr, value in name_value_dict.items()
-            if attr not in mandatory_attrs or not value
-        }
-
-        missing_attrs = {
-            (attr, mcs._MANDATORY_ATTRIBUTE_MISSING)
-            for attr in mandatory_attrs
-            if attr not in name_value_dict
-        }
-
-        return failed_validation | missing_attrs
 
 
 # noinspection PyUnresolvedReferences
