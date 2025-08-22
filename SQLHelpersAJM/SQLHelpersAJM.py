@@ -4,18 +4,39 @@ SQLHelpersAJM.py
 classes meant to streamline interaction with multiple different flavors of SQL database including MSSQL and SQLlite
 
 """
-from abc import abstractmethod
+# pylint: disable=logging-fstring-interpolation
+# pylint: disable=no-member
+
+from abc import abstractmethod, ABCMeta
 from collections import ChainMap
 from typing import Optional, List, Union
 import logging
 
-from _backend import deprecated, _NoCursorInitializedError, _NoResultsToConvertError
+from _backend import (deprecated,
+                      _NoCursorInitializedError,
+                      _NoResultsToConvertError,
+                      _NoTrackedTablesError,
+                      _MissingRequiredClassAttribute)
 from _version import __version__
 
 
-class _BaseSQLHelper:
+class _SharedLogger:
+    def _setup_logger(self, **kwargs) -> logging.Logger:
+        """
+        Sets up and returns a logger for the class.
+
+        :return: Configured logger instance.
+        :rtype: logging.Logger
+        """
+        logger = logging.getLogger(self.__class__.__name__)
+        if not logger.hasHandlers():
+            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
+        return logger
+
+
+class BaseSQLHelper(_SharedLogger):
     """
-    _BaseSQLHelper is an abstract base class providing database connection, querying,
+    BaseSQLHelper is an abstract base class providing database connection, querying,
         and result transformation capabilities. This class includes methods for managing database connections,
         querying data, and processing query results. It uses a logger for debugging and error handling,
         and supports methods for obtaining query results in different formats.
@@ -74,18 +95,6 @@ class _BaseSQLHelper:
     @property
     def __version__(self):
         return __version__
-
-    def _setup_logger(self, ** kwargs) -> logging.Logger:
-        """
-        Sets up and returns a logger for the class.
-
-        :return: Configured logger instance.
-        :rtype: logging.Logger
-        """
-        logger = logging.getLogger(self.__class__.__name__)
-        if not logger.hasHandlers():
-            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
-        return logger
 
     @property
     def is_ready_for_query(self):
@@ -180,7 +189,7 @@ class _BaseSQLHelper:
 
     @staticmethod
     def normalize_single_result(result) -> (
-    Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
+            Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
         """
         :param result: The input data that can be a tuple, list, or other iterable structure,
         typically containing one or more elements; used to normalize to a simpler format.
@@ -293,7 +302,7 @@ class _BaseSQLHelper:
         return None
 
 
-class _BaseConnectionAttributes(_BaseSQLHelper):
+class BaseConnectionAttributes(BaseSQLHelper):
     """
     A base class for managing database connection attributes, constructing connection strings,
     and providing mechanisms to populate class attributes either through explicit arguments
@@ -437,3 +446,468 @@ class _BaseConnectionAttributes(_BaseSQLHelper):
                                                          key_value_split_char)
         return cls(**cxn_attrs, **kwargs)
 
+
+class ABCCreateTriggers(ABCMeta, type):
+    """
+    ABCCreateTriggers is a metaclass that enforces the presence and validation of certain mandatory class attributes
+    for any class inheriting from it. This is designed to implement a structure where specific attributes
+    must be defined in the derived class with valid values.
+
+    Attributes:
+      TABLES_TO_TRACK: Attribute intended for tracking specific tables.
+      AUDIT_LOG_CREATE_TABLE: Attribute for audit log creation table.
+      AUDIT_LOG_CREATED_CHECK: Attribute to verify if an audit log was created.
+      HAS_TRIGGER_CHECK: Attribute for trigger existence verification.
+      GET_COLUMN_NAMES: Attribute to get column names.
+      INSERT_TRIGGER: Attribute for defining insert triggers.
+      UPDATE_TRIGGER: Attribute for defining update triggers.
+      DELETE_TRIGGER: Attribute for defining delete triggers.
+      _MANDATORY_ATTRIBUTE_MISSING: Internal constant representing a missing attribute.
+      _MANDATORY_ATTRIBUTE_UNDEFINED: Internal constant representing an undefined attribute.
+
+    Methods:
+      __new__(mcs, name, bases, dct):
+        This method is overridden to validate that all mandatory attributes are correctly defined in
+        the derived class. If any attributes are missing or have invalid values, a TypeError is raised.
+
+      _valid_value(mcs, base_class, value):
+        Class method that checks if a value associated with a mandatory attribute is valid. It ensures
+        the attribute is not None and has a non-zero length.
+
+      get_name_value_validation_dict(mcs, bases):
+        Class method that builds a name-value validation dictionary by inspecting the base classes.
+        This dictionary maps attribute names to their validity status.
+
+      _get_mandatory_class_attrs(mcs):
+        Retrieves all mandatory attributes by inspecting the class for uppercase attribute names
+        that do not start with an underscore.
+
+      _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
+        Validates the mandatory class attributes. If any of the required attributes are either
+        missing or undefined, they are added to the failed validation set. Returns the set of
+        attributes that failed validation, along with their validation statuses.
+    """
+    TABLES_TO_TRACK = None
+    AUDIT_LOG_CREATE_TABLE = None
+    AUDIT_LOG_CREATED_CHECK = None
+    HAS_TRIGGER_CHECK = None
+    GET_COLUMN_NAMES = None
+
+    INSERT_TRIGGER = None
+    UPDATE_TRIGGER = None
+    DELETE_TRIGGER = None
+
+    _MANDATORY_ATTRIBUTE_MISSING = 'missing'
+    _MANDATORY_ATTRIBUTE_UNDEFINED = 'undefined'
+
+    def __new__(mcs, name, bases, dct):
+        mandatory_class_attrs = mcs._get_mandatory_class_attrs()
+        name_value_validation_dict = mcs.get_name_value_validation_dict(bases)
+
+        failed_validation = mcs._validate_class_attributes(mandatory_class_attrs, name_value_validation_dict)
+
+        if failed_validation:
+            raise TypeError(
+                f"{name} is missing the definition for these attributes: {list(failed_validation)}"
+            )
+
+        return super().__new__(mcs, name, bases, dct)
+
+    @classmethod
+    def _valid_value(mcs, base_class, value):
+        return (getattr(base_class, value) is not None
+                and len(getattr(base_class, value)) > 0)
+
+    @classmethod
+    def get_name_value_validation_dict(mcs, bases):
+        name_value_validation = {}
+        for x in bases:
+            for y in dir(x):
+                if not y.startswith('_') and y.isupper():
+                    name_value_validation.update({y: mcs._valid_value(x, y)})
+        return name_value_validation
+
+    @classmethod
+    def _get_mandatory_class_attrs(mcs):
+        """Retrieve mandatory class attributes."""
+        return [attr for attr in dir(mcs) if not attr.startswith('_') and attr.isupper()]
+
+    @classmethod
+    def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
+        """Validate class attributes and identify missing or undefined attributes."""
+        failed_validation = {
+            (attr, mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value or not len(value) else mcs._MANDATORY_ATTRIBUTE_MISSING)
+            for attr, value in name_value_dict.items()
+            if attr not in mandatory_attrs or not value
+        }
+
+        missing_attrs = {
+            (attr, mcs._MANDATORY_ATTRIBUTE_MISSING)
+            for attr in mandatory_attrs
+            if attr not in name_value_dict
+        }
+
+        return failed_validation | missing_attrs
+
+
+# noinspection PyUnresolvedReferences
+class BaseCreateTriggers(_SharedLogger):
+    """
+        Class for managing SQLite triggers and audit logging.
+
+        This class extends `SQLlite3Helper` to handle the creation and management
+        of database triggers that log changes (inserts, updates, and deletes) made
+        on specific tables into an audit log table.
+
+        Attributes:
+        -----------
+        TABLES_TO_TRACK : list
+            A list of table names to generate audit triggers for.
+        AUDIT_LOG_CREATE_TABLE : str
+            SQL query to create the audit log table if it does not exist.
+        AUDIT_LOG_CREATED_CHECK : str
+            SQL query to check if the audit log table already exists.
+        HAS_TRIGGER_CHECK : str
+            SQL query used to check if a given table has triggers associated with it.
+        INSERT_TRIGGER : str
+            SQL template used to generate an INSERT trigger for a table.
+        UPDATE_TRIGGER : str
+            SQL template used to generate an UPDATE trigger for a table.
+        DELETE_TRIGGER : str
+            SQL template used to generate a DELETE trigger for a table.
+
+        Methods:
+        --------
+        __init__(db_file_path: Union[str, Path]):
+            Initializes the SQLite connection and ensures the audit log table is created.
+
+        __init_subclass__(**kwargs):
+            Ensures that all subclasses define tables to track changes for.
+
+        _create_audit_log_table():
+            Creates the audit log table in the SQLite database.
+
+        has_tracked_tables() -> bool:
+            Class method to check if any tables have been listed for tracking.
+
+        has_audit_log_table() -> bool:
+            Property to check if the audit log table exists in the SQLite database.
+
+        _has_trigger(table: str) -> bool:
+            Checks whether audit triggers already exist for a given table.
+
+        _get_column_names(table: str) -> list:
+            Retrieves the names of all columns for a given table.
+
+        _get_row_json(columns: list) -> tuple:
+            Generates JSON object strings for representing old and new rows
+            based on the provided column names.
+
+        create_triggers_for_table(table_name: str, columns: list, commit_triggers: bool=False):
+            Creates the INSERT, UPDATE, and DELETE triggers for a given table and optionally commits them.
+
+        generate_triggers_for_all_tables():
+            Generates triggers for all the tables in `TABLES_TO_TRACK` if they do
+            not already exist and commits the changes to the database.
+    """
+
+    _MAGIC_IGNORE_STRING = 'not a value'
+
+    def __init__(self, **kwargs):
+        self._cursor = None
+        self._connection = None
+        self._logger = self._setup_logger()
+        self.audit_log_table_init()
+        if self.has_required_class_attributes:
+            pass
+
+    def __init_subclass__(cls, **kwargs):
+        """
+        Called when a class is subclassed. Ensures that the subclass has valid configurations regarding table tracking.
+
+        :param kwargs: Additional keyword arguments passed to the subclass.
+        :type kwargs: dict
+        :raises _NoTrackedTablesError: If the subclass is missing tracked tables configuration and is not a table tracker class.
+        :return: None
+        :rtype: None
+        """
+        super().__init_subclass__(**kwargs)
+        is_missing_tracked_tables = (hasattr(cls, 'TABLES_TO_TRACK')
+                                     and cls.TABLES_TO_TRACK == [cls._MAGIC_IGNORE_STRING]
+                                     and not cls.is_table_tracker_class())
+
+        if is_missing_tracked_tables:
+            raise _NoTrackedTablesError()
+        # if (not cls.has_tracked_tables()
+        #         and not cls.is_table_tracker_class()):
+        #     raise _NoTrackedTablesError()
+
+    def audit_log_table_init(self):
+        """
+        Initializes the audit log table by ensuring its existence.
+
+        Calls the `get_connection_and_cursor` method of the class, if available, to establish a database connection. Verifies if the audit log table exists and creates it if it does not. Logs information if the audit log table is already detected. Raises an error if the class does not have the `get_connection_and_cursor` method.
+
+        :raise AttributeError: If the class does not have the method `get_connection_and_cursor`.
+        """
+        if hasattr(self, 'get_connection_and_cursor'):
+            self.get_connection_and_cursor()
+            if not self.has_audit_log_table:
+                self._create_audit_log_table()
+            else:
+                self._logger.info("audit_log_table detected.")
+        else:
+            raise AttributeError("improper subclassing, "
+                                 "\'get_connection_and_cursor\' method is missing.")
+
+    @abstractmethod
+    def _connect(self):
+        """
+        Establishes a connection to a specific resource or service.
+
+        This method must be implemented by subclasses to define how the connection
+        should be established. It serves as a template for specifying connection
+        details and behavior.
+
+        :return: None
+        :rtype: NoneType
+        """
+        ...
+
+    @abstractmethod
+    def Query(self, sql_string: str, **kwargs):
+        """
+        :param sql_string: The SQL query string to be executed.
+        :type sql_string: str
+        :param kwargs: Additional keyword arguments for executing the query.
+        :type kwargs: dict
+        :return: The result of the query execution.
+        :rtype: Any
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def query_results(self):
+        """
+        Indicates the property `query_results` is an abstract method that must be implemented by any subclass.
+
+        :return: The results of a specific query.
+        :rtype: Depends on the implementation in the subclass.
+        """
+        ...
+
+    @abstractmethod
+    def GetConnectionAndCursor(self):
+        """
+        Fetches a new database connection and associated cursor.
+
+        :return: A tuple containing the database connection and cursor.
+        :rtype: tuple
+        """
+        ...
+
+    @abstractmethod
+    def get_connection_and_cursor(self):
+        """
+        Return a connection object and a cursor object for database interaction.
+
+        :return: A tuple containing the connection object and the cursor object.
+        :rtype: tuple
+        """
+        ...
+
+    @classmethod
+    def is_table_tracker_class(cls):
+        """
+        :return: Indicates whether the class name adheres to the naming convention of starting with an underscore ('_') and ending with 'TableTracker'.
+        :rtype: bool
+
+        """
+        return (cls.__name__.startswith('_')
+                and cls.__name__.endswith('TableTracker'))
+
+    @property
+    def has_required_class_attributes(self):
+        """
+        Checks if all required class attributes are set and not None.
+
+        The method iterates through a list of required class attributes defined in `self.required_class_attributes`
+        and verifies if each attribute exists in the current instance and is not None. If all required attributes are
+        present and valid, it logs a debug message indicating their status and returns True. Otherwise, it raises
+        an exception `_MissingRequiredClassAttribute`.
+
+        :return: True if all required class attributes are set and not None
+        :rtype: bool
+        :raises _MissingRequiredClassAttribute: If one or more required class attributes are missing or None
+        """
+        class_attr = [(hasattr(self, x) and getattr(self, x) is not None)
+                      for x in self.required_class_attributes]
+
+        if all(class_attr):
+            self._logger.debug(f"All {len(self.required_class_attributes)} "
+                               f"required class attributes are set.")
+            return True
+        raise _MissingRequiredClassAttribute()
+
+    @property
+    def required_class_attributes(self):
+        """
+        :return: A list of all uppercase class attribute names.
+        :rtype: list
+        """
+        return [x for x in self.__dir__() if x.isupper()]
+
+    @property
+    def class_attr_list(self):
+        """
+        :return: A dictionary of all non-callable, non-magic attributes of the class.
+        :rtype: dict
+        """
+        class_attrs = {key: value for key, value in self.__class__.__dict__.items() if
+                       not callable(value) and not key.startswith("__")}
+        return class_attrs
+
+    def _create_audit_log_table(self):
+        """
+        Creates the audit log table in the database.
+
+        :return: None
+        :rtype: None
+        """
+        self._cursor.execute(self.__class__.AUDIT_LOG_CREATE_TABLE)
+        self._connection.commit()
+        self._logger.info("Audit log table created.")
+
+    @classmethod
+    def has_tracked_tables(cls):
+        """
+        Checks if there are any tracked tables defined in the TABLES_TO_TRACK attribute.
+
+        :return: True if there are tables to track, False otherwise
+        :rtype: bool
+
+        """
+        return bool(cls.TABLES_TO_TRACK) if hasattr(cls, 'TABLES_TO_TRACK') else False
+
+    @property
+    def has_audit_log_table(self):
+        """
+        Checks if the audit log table exists by executing a predefined query.
+
+        :return: True if the audit log table exists, False otherwise
+        :rtype: bool
+        """
+        self.Query(self.__class__.AUDIT_LOG_CREATED_CHECK)
+        if self.query_results:
+            return True
+        return False
+
+    def _has_trigger(self, table):
+        """
+        :param table: The name of the table to check for associated triggers.
+        :type table: str
+        :return: Returns True if the table has associated triggers, otherwise False.
+        :rtype: bool
+        """
+        self.Query(self.__class__.HAS_TRIGGER_CHECK.format(table=table))
+        if self.query_results:
+            return True
+        return False
+
+    def _get_column_names(self, table):
+        self.Query(self.__class__.GET_COLUMN_NAMES.format(table=table))
+        if self.query_results:
+            return [x[0] for x in self.query_results]
+
+    @staticmethod
+    def _get_row_json(columns):
+        """
+        :param columns: List of column names to be used for generating JSON objects.
+        :type columns: list of str
+        :return: A tuple containing two strings, `new_row_json` and `old_row_json`.
+                 Each string is a JSON object representation using the given columns.
+        :rtype: tuple
+        """
+        # changed to .format instead of f-strings to preserve backwards compatibility with py <=3.8
+        new_row_json = "json_object({})".format(
+            ', '.join(["'{}', NEW.{}".format(col, col) for col in columns])
+        )
+        old_row_json = "json_object({})".format(
+            ', '.join(["'{}', OLD.{}".format(col, col) for col in columns])
+        )
+        return new_row_json, old_row_json
+
+    def create_triggers_for_table(self, table_name, columns, commit_triggers=False):
+        """
+        :param table_name: Name of the database table for which triggers are to be created.
+        :type table_name: str
+        :param columns: List of column names to be included in the triggers.
+        :type columns: list
+        :param commit_triggers: Flag indicating whether the changes should be committed to the database. Defaults to False.
+        :type commit_triggers: bool
+        :return: None
+        :rtype: None
+        """
+        new_row_json, old_row_json = self._get_row_json(columns)
+
+        # INSERT Trigger for table_name
+        insert_trigger_query = self.__class__.INSERT_TRIGGER.format(table_name=table_name,
+                                                                    new_row_json=new_row_json)
+        self._cursor.execute(insert_trigger_query)
+
+        # UPDATE Trigger for table_name
+        update_trigger_query = self.__class__.UPDATE_TRIGGER.format(table_name=table_name,
+                                                                    old_row_json=old_row_json,
+                                                                    new_row_json=new_row_json)
+        self._cursor.execute(update_trigger_query)
+
+        # DELETE Trigger for table_name
+        delete_trigger_query = self.__class__.DELETE_TRIGGER.format(table_name=table_name,
+                                                                    old_row_json=old_row_json)
+        self._cursor.execute(delete_trigger_query)
+
+        if not commit_triggers:
+            self._logger.warning(f"triggers for {table_name} created but NOT COMMITTED.")
+        else:
+            self._connection.commit()
+            self._logger.info(f"triggers for {table_name} created and committed.")
+
+    def generate_triggers_for_all_tables(self):
+        """
+        Generates database triggers for all the tables listed in `TABLES_TO_TRACK`.
+
+        This function iterates through each table in `TABLES_TO_TRACK` and checks if
+        the table already has triggers. If triggers are not present for a table, it
+        creates them by calling `create_triggers_for_table` using the table name as
+        well as the column names retrieved from `_get_column_names`. Debug and
+        informational logging is performed during this process to record trigger
+        generation status for each table. After successfully generating triggers for
+        all tables, the changes are committed to the database.
+
+        :return: None
+        :rtype: None
+        """
+        self._logger.info(f"Attempting to generate triggers for {len(self.__class__.TABLES_TO_TRACK)} tables")
+        trigger_create_counter = 0
+        already_created_counter = 0
+
+        for table in self.__class__.TABLES_TO_TRACK:
+            if not self._has_trigger(table):
+                trigger_create_counter = + 1
+                self.create_triggers_for_table(table, self._get_column_names(table))
+                self._logger.debug(f'triggers for {table} created')
+                print(f'triggers for {table} created')
+            else:
+                already_created_counter = + 1
+                print(f'{table} already has triggers')
+                self._logger.debug(f'{table} already has triggers')
+
+        if trigger_create_counter > 0:
+            self._logger.info(f'{trigger_create_counter} trigger(s) generated successfully')
+
+            self._logger.info('committing triggers')
+            self._connection.commit()
+            self._logger.info('triggers committed successfully')
+        if already_created_counter > 0:
+            self._logger.info(f'{already_created_counter} trigger(s) were already present')

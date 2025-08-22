@@ -2,10 +2,10 @@
 # pylint: disable=import-error
 
 import pyodbc
-from SQLHelpersAJM import _BaseConnectionAttributes
+from SQLHelpersAJM import BaseConnectionAttributes
 
 
-class SQLServerHelper(_BaseConnectionAttributes):
+class SQLServerHelper(BaseConnectionAttributes):
     """
     A helper class to interact with an SQL Server database using pyodbc.
     Provides utility methods for connection management, executing queries, and formatting query results.

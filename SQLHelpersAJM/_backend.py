@@ -33,6 +33,15 @@ class _UseDefaultMessageBase(Exception):
         super().__init__(msg)
 
 
+class _MissingRequiredClassAttribute(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = "Missing at least one required class attribute"
+
+
+class _NoTrackedTablesError(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = ("No tables have been specified to track. "
+                       "Please specify tables to track in the TABLES_TO_TRACK class variable.")
+
+
 class _NoCursorInitializedError(_UseDefaultMessageBase):
     DEFAULT_MESSAGE = ("Cursor has not been initialized yet, "
                        "run get_connection_and_cursor before querying")
