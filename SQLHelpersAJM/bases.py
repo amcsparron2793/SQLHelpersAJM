@@ -1,34 +1,11 @@
-"""
-SQLHelpersAJM.py
-
-classes meant to streamline interaction with multiple different flavors of SQL database including MSSQL and SQLlite
-
-"""
-# pylint: disable=logging-fstring-interpolation
-# pylint: disable=no-member
-
 from abc import abstractmethod
 from collections import ChainMap
-from typing import Optional, List, Union
-import logging
+from typing import Union, Optional, List
 
-from backend import (MissingRequiredClassAttribute, NoTrackedTablesError,
-                     NoCursorInitializedError, NoResultsToConvertError, deprecated)
-from _version import __version__
-
-
-class _SharedLogger:
-    def _setup_logger(self, **kwargs) -> logging.Logger:
-        """
-        Sets up and returns a logger for the class.
-
-        :return: Configured logger instance.
-        :rtype: logging.Logger
-        """
-        logger = logging.getLogger(self.__class__.__name__)
-        if not logger.hasHandlers():
-            logging.basicConfig(level=kwargs.get('basic_config_level', logging.INFO))
-        return logger
+from SQLHelpersAJM import _SharedLogger
+from SQLHelpersAJM._version import __version__
+from backend import deprecated, NoCursorInitializedError, NoResultsToConvertError, NoTrackedTablesError, \
+    MissingRequiredClassAttribute
 
 
 class BaseSQLHelper(_SharedLogger):
@@ -452,23 +429,6 @@ class BaseCreateTriggers(_SharedLogger):
         This class extends `SQLlite3Helper` to handle the creation and management
         of database triggers that log changes (inserts, updates, and deletes) made
         on specific tables into an audit log table.
-
-        Attributes:
-        -----------
-        TABLES_TO_TRACK : list
-            A list of table names to generate audit triggers for.
-        AUDIT_LOG_CREATE_TABLE : str
-            SQL query to create the audit log table if it does not exist.
-        AUDIT_LOG_CREATED_CHECK : str
-            SQL query to check if the audit log table already exists.
-        HAS_TRIGGER_CHECK : str
-            SQL query used to check if a given table has triggers associated with it.
-        INSERT_TRIGGER : str
-            SQL template used to generate an INSERT trigger for a table.
-        UPDATE_TRIGGER : str
-            SQL template used to generate an UPDATE trigger for a table.
-        DELETE_TRIGGER : str
-            SQL template used to generate a DELETE trigger for a table.
 
         Methods:
         --------
