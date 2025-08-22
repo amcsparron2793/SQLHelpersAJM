@@ -1,9 +1,11 @@
 import psycopg2
-from SQLHelpersAJM import _BaseConnectionAttributes
+from SQLHelpersAJM import BaseConnectionAttributes
 
-class PostgresHelper(_BaseConnectionAttributes):
+
+class PostgresHelper(BaseConnectionAttributes):
     def __init__(self, server, database, **kwargs):
-        super().__init__(server, database, **kwargs)
+        self._logger = self._setup_logger(basic_config_level='DEBUG')
+        super().__init__(server, database, logger=self._logger, **kwargs)
         self.port = kwargs.get('port', 5432)
         self.username = kwargs.get('username', 'postgres')
         self._password = kwargs.get('password', '')
@@ -15,8 +17,6 @@ class PostgresHelper(_BaseConnectionAttributes):
             'user': self.username,
             'password':self._password}
         print("attempting to connect to postgres")
-        self._logger.debug(f"attempting to connect to postgres with "
-                           f"the following parameters: {cxn_params}")
         cxn = psycopg2.connect(** cxn_params)
         print("connection successful")
         self._logger.debug("connection successful")

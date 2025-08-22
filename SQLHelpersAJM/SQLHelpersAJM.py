@@ -353,7 +353,7 @@ class BaseConnectionAttributes(BaseSQLHelper):
 
         if all(self.connection_information):
             self._logger.debug(f"initialized {self.__class__.__name__} with the following connection parameters:\n"
-                               f"{', '.join(['='.join(x) for x in self.connection_information.items()])}")
+                               f"{', '.join(['='.join(x) for x in self.connection_information.items() if x[1] is not None])}")
             self._logger.info(f"initialized {self.__class__.__name__}")
 
     @abstractmethod
