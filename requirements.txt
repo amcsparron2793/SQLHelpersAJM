@@ -5,3 +5,5 @@ pyproject_hooks==1.1.0
 setuptools==75.1.0
 
 pyodbc~=5.2.0
+# pip install "psycopg[binary,pool]"  # to install package and dependencies
+psycopg~=3.2.9

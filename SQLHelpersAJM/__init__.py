@@ -24,4 +24,5 @@ class _SharedLogger:
 
 from SQLHelpersAJM.bases import BaseSQLHelper, BaseConnectionAttributes, BaseCreateTriggers
 from SQLHelpersAJM.SQLServer import SQLServerHelper
+from SQLHelpersAJM.Postgres import PostgresHelper
 from SQLHelpersAJM.SQLite3_helper import SQLite3Helper, SQLite3HelperTT
