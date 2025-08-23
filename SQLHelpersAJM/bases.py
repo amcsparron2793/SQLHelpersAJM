@@ -327,6 +327,7 @@ class BaseConnectionAttributes(BaseSQLHelper):
     _TRUSTED_CONNECTION_DEFAULT = 'yes'
     _DRIVER_DEFAULT = None
     _INSTANCE_DEFAULT = 'SQLEXPRESS'
+    _DEFAULT_PORT = 1433
 
     def __init__(self, server, database, instance=_INSTANCE_DEFAULT, driver=_DRIVER_DEFAULT,
                  trusted_connection=_TRUSTED_CONNECTION_DEFAULT, **kwargs):
@@ -344,13 +345,15 @@ class BaseConnectionAttributes(BaseSQLHelper):
         self.driver = driver
         self.username = kwargs.get('username', '')
         self._password = kwargs.get('password', '')
-        self.port = kwargs.get('port', 0)
+        self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
         self.trusted_connection = trusted_connection
 
         if all(self.connection_information):
             self._logger.debug(f"initialized {self.__class__.__name__} with the following connection parameters:\n"
                                f"{', '.join(['='.join(x) for x in self.connection_information.items() if x[1] is not None])}")
             self._logger.info(f"initialized {self.__class__.__name__}")
+    def __str__(self):
+        return f"{self.__class__.__name__} v{self.__version__}"
 
     @abstractmethod
     def _connect(self):
@@ -372,6 +375,7 @@ class BaseConnectionAttributes(BaseSQLHelper):
                 'instance': self.instance,
                 'database': self.database,
                 'driver': self.driver,
+                'port': str(self.port),
                 'username': self.username or '',
                 'password': 'WITHHELD or None',
                 'trusted_connection': self.trusted_connection}
