@@ -2,7 +2,7 @@ build==1.2.2
 colorama==0.4.6
 packaging==25
 pyproject_hooks==1.1.0
-setuptools==75.1.0
+setuptools==78.1.1
 
 pyodbc~=5.2.0
 # pip install "psycopg[binary,pool]"  # to install package and dependencies
