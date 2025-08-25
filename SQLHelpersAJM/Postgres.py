@@ -6,7 +6,6 @@ from backend import ABCPostgresCreateTriggers
 
 
 class _PostgresTableTracker(BaseCreateTriggers):
-    VALID_SCHEMA_CHOICES_QUERY = """SELECT schema_name FROM information_schema.schemata;"""
     TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
 
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log (
@@ -119,6 +118,8 @@ class _PostgresTableTracker(BaseCreateTriggers):
 class PostgresHelper(BaseConnectionAttributes):
     _INSTANCE_DEFAULT = None
     _DEFAULT_PORT = 5432
+    VALID_SCHEMA_CHOICES_QUERY = """SELECT schema_name FROM information_schema.schemata;"""
+    _DEFAULT_SCHEMA_CHOICE = 'public'
 
     def __init__(self, server, database, **kwargs):
         self.instance = kwargs.get('instance', self.__class__._INSTANCE_DEFAULT)
@@ -129,6 +130,10 @@ class PostgresHelper(BaseConnectionAttributes):
         self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
         self.username = kwargs.get('username', '')
         self._password = kwargs.get('password', '')
+        self._valid_schema_choices = None
+        self._schema_choice = None
+
+        self.schema_choice = self.__class__._DEFAULT_SCHEMA_CHOICE
 
     def _connect(self):
         cxn_params = {'host': self.server,
@@ -142,29 +147,17 @@ class PostgresHelper(BaseConnectionAttributes):
         self._logger.debug("connection successful")
         return cxn
 
+    def _add_schema_to_query(self, sql_string: str):
+        # TODO: account for already supplied schemas
+        from_statements = [x.strip() for x in sql_string.lower().split('from')][-1].split(
+            ',')  # sql_string.split('FROM')[-1]]
+        new_froms = {x.strip(): '.'.join((self.schema_choice, x.strip())) for x in from_statements}
+        sql_string = sql_string.replace(from_statements[0], new_froms.get(from_statements[0]))
+        return sql_string
 
-class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostgresCreateTriggers):
-    TABLES_TO_TRACK = ['test_table']
-    _ATTR_SUFFIX = '_FUNC'
-    _ATTR_PREFIX = 'LOG_AFTER_'
-    _FUNC_EXISTS_PLACEHOLDER_FN = 'function_name'
-    _FUNC_EXISTS_PLACEHOLDER_SCHEMA = 'schema_name'
-    _DEFAULT_SCHEMA_CHOICE = 'public'
+    def query(self, sql_string: str, **kwargs):
+        super().query(self._add_schema_to_query(sql_string), **kwargs)
 
-    def __init__(self, server, database, **kwargs):
-        super().__init__(server, database, **kwargs)
-        _PostgresTableTracker.__init__(self, **kwargs)
-        self._valid_schema_choices = None
-        self._schema_choice = None
-
-        self.schema_choice = self.__class__._DEFAULT_SCHEMA_CHOICE
-
-        # the name of the class attr, and the name of the psql function as a tuple
-        self._psql_function_attrs_func_name = [(x, self.__class__._format_func_name(x)) for x
-                                               in self.__dir__() if self.__class__._is_func_attr(x)]
-        self._check_or_create_functions()
-
-    # TODO: move schema_choices etc to PostgresHelper?
     @property
     def valid_schema_choices(self):
         if not self._valid_schema_choices:
@@ -178,11 +171,29 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
 
     @schema_choice.setter
     def schema_choice(self, value):
-        if value in self.valid_schema_choices:
+        if value in self.valid_schema_choices or value == 'public':
             self._schema_choice = value
         else:
             raise ValueError(f"Invalid schema choice: {value}. "
                              f"Valid choices are: {self.valid_schema_choices}")
+
+
+class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostgresCreateTriggers):
+    TABLES_TO_TRACK = ['test_table']
+    _ATTR_SUFFIX = '_FUNC'
+    _ATTR_PREFIX = 'LOG_AFTER_'
+    _FUNC_EXISTS_PLACEHOLDER_FN = 'function_name'
+    _FUNC_EXISTS_PLACEHOLDER_SCHEMA = 'schema_name'
+    _DEFAULT_SCHEMA_CHOICE = 'public'
+
+    def __init__(self, server, database, **kwargs):
+        super().__init__(server, database, **kwargs)
+        _PostgresTableTracker.__init__(self, **kwargs)
+
+        # the name of the class attr, and the name of the psql function as a tuple
+        self._psql_function_attrs_func_name = [(x, self.__class__._format_func_name(x)) for x
+                                               in self.__dir__() if self.__class__._is_func_attr(x)]
+        self._check_or_create_functions()
 
     @classmethod
     def _format_func_name(cls, name: str):
