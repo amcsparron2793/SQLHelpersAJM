@@ -1,6 +1,6 @@
 from backend.errors import MissingRequiredClassAttribute, NoTrackedTablesError, NoCursorInitializedError, \
     NoConnectionInitializedError, NoResultsToConvertError
-from backend.meta import ABCCreateTriggers
+from backend.meta import ABCCreateTriggers, ABCPostgresCreateTriggers
 
 import functools
 import warnings

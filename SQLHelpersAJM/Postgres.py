@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 import psycopg
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
-from backend import ABCCreateTriggers
+from backend import ABCPostgresCreateTriggers
 
 
 class _PostgresTableTracker(BaseCreateTriggers):
@@ -48,7 +48,7 @@ class _PostgresTableTracker(BaseCreateTriggers):
                             FROM information_schema.columns
                             WHERE table_name = '{table}';"""
 
-    _LOG_AFTER_INSERT_FUNC = """CREATE OR REPLACE FUNCTION log_after_insert() RETURNS TRIGGER AS $$
+    LOG_AFTER_INSERT_FUNC = """CREATE OR REPLACE FUNCTION log_after_insert() RETURNS TRIGGER AS $$
                                 BEGIN
                                     INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
                                     VALUES (
@@ -61,7 +61,7 @@ class _PostgresTableTracker(BaseCreateTriggers):
                                 END;
                                 $$ LANGUAGE plpgsql;"""
 
-    _LOG_AFTER_UPDATE_FUNC = """CREATE OR REPLACE FUNCTION log_after_update() RETURNS TRIGGER AS $$
+    LOG_AFTER_UPDATE_FUNC = """CREATE OR REPLACE FUNCTION log_after_update() RETURNS TRIGGER AS $$
                                 BEGIN
                                     INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
                                     VALUES (
@@ -74,7 +74,7 @@ class _PostgresTableTracker(BaseCreateTriggers):
                                 END;
                                 $$ LANGUAGE plpgsql;"""
 
-    _LOG_AFTER_DELETE_FUNC = """CREATE OR REPLACE FUNCTION log_after_delete() RETURNS TRIGGER AS $$
+    LOG_AFTER_DELETE_FUNC = """CREATE OR REPLACE FUNCTION log_after_delete() RETURNS TRIGGER AS $$
                                 BEGIN
                                     INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
                                     VALUES (
@@ -87,7 +87,7 @@ class _PostgresTableTracker(BaseCreateTriggers):
                                 END;
                                 $$ LANGUAGE plpgsql;"""
 
-    _FUNC_EXISTS_CHECK = """SELECT 
+    FUNC_EXISTS_CHECK = """SELECT 
     EXISTS (
         SELECT 1 
         FROM pg_proc p
@@ -142,7 +142,7 @@ class PostgresHelper(BaseConnectionAttributes):
         return cxn
 
 
-class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCCreateTriggers):
+class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostgresCreateTriggers):
     TABLES_TO_TRACK = ['test_table']
 
     def __init__(self, server, database, **kwargs):
@@ -150,13 +150,13 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCCreat
         _PostgresTableTracker.__init__(self, **kwargs)
         # the name of the class attr, and the name of the psql function as a tuple
         self._psql_function_attrs_func_name = [(x, (''.join(x[1:]).split('_FUNC')[0].lower()) + '()')
-                                               for x in self.__dir__() if x.startswith('_LOG_AFTER_')
+                                               for x in self.__dir__() if x.startswith('LOG_AFTER_')
                                                and x.endswith('_FUNC')]
         self._check_or_create_functions()
 
     def _check_or_create_functions(self):
         for f in self._psql_function_attrs_func_name:
-            self.query(self._FUNC_EXISTS_CHECK.replace(
+            self.query(self.FUNC_EXISTS_CHECK.replace(
                 'function_name', f[1]).replace('schema_name', 'public'))
             exists = bool(self.query_results)
             if not exists:

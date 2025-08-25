@@ -108,3 +108,15 @@ class ABCCreateTriggers(ABCMeta, type):
                 failed_validation.add((attr, mcs._MANDATORY_ATTRIBUTE_MISSING))
 
         return failed_validation
+
+
+class ABCPostgresCreateTriggers(ABCCreateTriggers):
+    LOG_AFTER_INSERT_FUNC = None
+    LOG_AFTER_UPDATE_FUNC = None
+    LOG_AFTER_DELETE_FUNC = None
+    FUNC_EXISTS_CHECK = None
+
+    @classmethod
+    def _get_mandatory_class_attrs(mcs):
+        """Retrieve mandatory class attributes."""
+        return [attr for attr in mcs.__dir__(mcs) if not attr.startswith('_') and attr.isupper()]
