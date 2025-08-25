@@ -224,18 +224,20 @@ class BaseSQLHelper(_SharedLogger):
             self._cursor.execute(sql_string)
 
             res = self._fetch_results()
-            self._process_results(res, is_commit)
+            self._process_results(res, is_commit, **kwargs)
 
         except Exception as e:
             self.log_and_raise_error(e)
 
-    def _process_results(self, results, is_commit):
+    def _process_results(self, results, is_commit, **kwargs):
+        silent_process = kwargs.get('silent_process', False)
         if is_commit:
             self._logger.info("committing changes")
             self._connection.commit()
         if results:
             self._logger.info(f"{len(results)} item(s) returned.")
-            print(f"{len(results)} item(s) returned.")
+            if not silent_process:
+                print(f"{len(results)} item(s) returned.")
         else:
             if not is_commit:
                 self._logger.warning("query returned no results")

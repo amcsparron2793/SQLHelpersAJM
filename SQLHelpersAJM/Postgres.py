@@ -17,14 +17,9 @@ class _PostgresTableTracker(BaseCreateTriggers):
     change_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );"""
 
-    # TODO: should AUDIT_LOG_CREATED_CHECK be a straight select query?
-    AUDIT_LOG_CREATED_CHECK = """DO $$
-                                    BEGIN
-                                        IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'audit_log') THEN
-                                            RAISE NOTICE 'Audit log table not found.';
-                                        END IF;
-                                    END;
-                                    $$;"""
+    AUDIT_LOG_CREATED_CHECK = """ select EXISTS(SELECT FROM pg_tables 
+                                    WHERE schemaname = 'public' 
+                                    AND tablename = 'audit_log');"""
 
     HAS_TRIGGER_CHECK = """DO $$
                             DECLARE
@@ -132,8 +127,11 @@ class PostgresHelper(BaseConnectionAttributes):
         self._password = kwargs.get('password', '')
         self._valid_schema_choices = None
         self._schema_choice = None
+        self.initialize_schema_choices(**kwargs)
 
-        self.schema_choice = self.__class__._DEFAULT_SCHEMA_CHOICE
+    def initialize_schema_choices(self, **kwargs):
+        self.get_connection_and_cursor()
+        self.schema_choice = kwargs.get('schema_choice', self.__class__._DEFAULT_SCHEMA_CHOICE)
 
     def _connect(self):
         cxn_params = {'host': self.server,
@@ -148,11 +146,14 @@ class PostgresHelper(BaseConnectionAttributes):
         return cxn
 
     def _add_schema_to_query(self, sql_string: str):
-        # TODO: account for already supplied schemas
-        from_statements = [x.strip() for x in sql_string.lower().split('from')][-1].split(
-            ',')  # sql_string.split('FROM')[-1]]
+        from_statements = [x.strip() for x in sql_string.lower().split('from')][-1].split(',')
+        has_schema = [x for x in from_statements if x.find('.') != -1]
+        if has_schema:
+            self._logger.debug(f"Query already contains schema: {has_schema}")
+            return sql_string
         new_from_statements = {x.strip(): '.'.join((self.schema_choice, x.strip())) for x in from_statements}
         sql_string = sql_string.replace(from_statements[0], new_from_statements.get(from_statements[0]))
+        self._logger.debug(f"Added schema to query: {sql_string}")
         return sql_string
 
     def query(self, sql_string: str, **kwargs):
@@ -161,8 +162,9 @@ class PostgresHelper(BaseConnectionAttributes):
     @property
     def valid_schema_choices(self):
         if not self._valid_schema_choices:
-            self.query(self.__class__.VALID_SCHEMA_CHOICES_QUERY)
-            self._valid_schema_choices = self.query_results
+            self.query(self.__class__.VALID_SCHEMA_CHOICES_QUERY, silent_process=True)
+            if self.query_results:
+                self._valid_schema_choices = [x[0] for x in self.query_results]
         return self._valid_schema_choices
 
     @property
@@ -171,7 +173,7 @@ class PostgresHelper(BaseConnectionAttributes):
 
     @schema_choice.setter
     def schema_choice(self, value):
-        if value in self.valid_schema_choices or value == 'public':
+        if value in self.valid_schema_choices:
             self._schema_choice = value
         else:
             raise ValueError(f"Invalid schema choice: {value}. "
@@ -217,7 +219,7 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
             sql_q = self._get_func_exists_check_str(
                 func_name=f[1],
                 schema_choice=schema_choice)
-            self.query(sql_q)
+            self.query(sql_q, silent_process=True)
             exists = bool(self.query_results)
             if not exists:
                 self._logger.info(f"Creating function {f[1]}")
@@ -229,7 +231,4 @@ if __name__ == '__main__':
     pg = PostgresHelperTT('192.168.1.7',  # port=5432,
                           database='postgres',
                           username='postgres',
-                          password=input('Enter Postgres db password for: '))
-    pg.get_connection_and_cursor()
-    pg.query("select * from pi.test_table;")
-    print(pg.query_results)
+                          password=input('Enter Postgres db password for: '))#, schema_choice='pi')
