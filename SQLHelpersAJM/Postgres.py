@@ -6,6 +6,7 @@ from backend import ABCPostgresCreateTriggers
 
 
 class _PostgresTableTracker(BaseCreateTriggers):
+    VALID_SCHEMA_CHOICES_QUERY = """SELECT schema_name FROM information_schema.schemata;"""
     TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
 
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log (
@@ -92,8 +93,8 @@ class _PostgresTableTracker(BaseCreateTriggers):
         SELECT 1 
         FROM pg_proc p
         JOIN pg_namespace n ON p.pronamespace = n.oid
-        WHERE p.proname = 'function_name'  -- Replace with your function name
-        AND n.nspname = 'schema_name'     -- Replace with your schema name
+        WHERE p.proname = '{function_name}'  -- Replace with your function name
+        AND n.nspname = '{schema_name}'     -- Replace with your schema name
         -- Uncomment next line if you want to check argument types
         -- AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'arg1_type, arg2_type'
     );"""
@@ -144,20 +145,68 @@ class PostgresHelper(BaseConnectionAttributes):
 
 class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostgresCreateTriggers):
     TABLES_TO_TRACK = ['test_table']
+    _ATTR_SUFFIX = '_FUNC'
+    _ATTR_PREFIX = 'LOG_AFTER_'
+    _FUNC_EXISTS_PLACEHOLDER_FN = 'function_name'
+    _FUNC_EXISTS_PLACEHOLDER_SCHEMA = 'schema_name'
+    _DEFAULT_SCHEMA_CHOICE = 'public'
 
     def __init__(self, server, database, **kwargs):
         super().__init__(server, database, **kwargs)
         _PostgresTableTracker.__init__(self, **kwargs)
+        self._valid_schema_choices = None
+        self._schema_choice = None
+
+        self.schema_choice = self.__class__._DEFAULT_SCHEMA_CHOICE
+
         # the name of the class attr, and the name of the psql function as a tuple
-        self._psql_function_attrs_func_name = [(x, (''.join(x[1:]).split('_FUNC')[0].lower()) + '()')
-                                               for x in self.__dir__() if x.startswith('LOG_AFTER_')
-                                               and x.endswith('_FUNC')]
+        self._psql_function_attrs_func_name = [(x, self.__class__._format_func_name(x)) for x
+                                               in self.__dir__() if self.__class__._is_func_attr(x)]
         self._check_or_create_functions()
 
-    def _check_or_create_functions(self):
+    # TODO: move schema_choices etc to PostgresHelper?
+    @property
+    def valid_schema_choices(self):
+        if not self._valid_schema_choices:
+            self.query(self.__class__.VALID_SCHEMA_CHOICES_QUERY)
+            self._valid_schema_choices = self.query_results
+        return self._valid_schema_choices
+
+    @property
+    def schema_choice(self):
+        return self._schema_choice
+
+    @schema_choice.setter
+    def schema_choice(self, value):
+        if value in self.valid_schema_choices:
+            self._schema_choice = value
+        else:
+            raise ValueError(f"Invalid schema choice: {value}. "
+                             f"Valid choices are: {self.valid_schema_choices}")
+
+    @classmethod
+    def _format_func_name(cls, name: str):
+        return ''.join(name.split(cls._ATTR_SUFFIX)[0].lower())  # + '()'
+
+    @classmethod
+    def _is_func_attr(cls, name):
+        return (name.startswith(cls._ATTR_PREFIX)
+                and name.endswith(cls._ATTR_SUFFIX))
+
+    @classmethod
+    def _get_func_exists_check_str(cls, func_name, schema_choice):
+        return cls.FUNC_EXISTS_CHECK.format(
+            **{cls._FUNC_EXISTS_PLACEHOLDER_FN: func_name,
+               cls._FUNC_EXISTS_PLACEHOLDER_SCHEMA: schema_choice}
+        )
+
+    def _check_or_create_functions(self, **kwargs):
+        schema_choice = kwargs.get('schema_choice', self.__class__._DEFAULT_SCHEMA_CHOICE)
         for f in self._psql_function_attrs_func_name:
-            self.query(self.FUNC_EXISTS_CHECK.replace(
-                'function_name', f[1]).replace('schema_name', 'public'))
+            sql_q = self._get_func_exists_check_str(
+                func_name=f[1],
+                schema_choice=schema_choice)
+            self.query(sql_q)
             exists = bool(self.query_results)
             if not exists:
                 self._logger.info(f"Creating function {f[1]}")

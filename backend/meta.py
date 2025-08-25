@@ -115,6 +115,7 @@ class ABCPostgresCreateTriggers(ABCCreateTriggers):
     LOG_AFTER_UPDATE_FUNC = None
     LOG_AFTER_DELETE_FUNC = None
     FUNC_EXISTS_CHECK = None
+    VALID_SCHEMA_CHOICES_QUERY = None
 
     @classmethod
     def _get_mandatory_class_attrs(mcs):
