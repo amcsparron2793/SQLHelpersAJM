@@ -111,6 +111,7 @@ The CREATE TRIGGER statements attach the functions to the target table using FOR
 # FOR EACH ROW EXECUTE FUNCTION log_after_delete();
 class _PostgresTableTracker(BaseCreateTriggers):
     TABLES_TO_TRACK = []
+
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log (
     id SERIAL PRIMARY KEY,
     table_name TEXT NOT NULL,
@@ -119,6 +120,8 @@ class _PostgresTableTracker(BaseCreateTriggers):
     new_row_data JSONB,
     change_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );"""
+
+    # TODO: should AUDIT_LOG_CREATED_CHECK be a straight select query?
     AUDIT_LOG_CREATED_CHECK = """DO $$
                                     BEGIN
                                         IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'audit_log') THEN
@@ -126,6 +129,7 @@ class _PostgresTableTracker(BaseCreateTriggers):
                                         END IF;
                                     END;
                                     $$;"""
+
     HAS_TRIGGER_CHECK = """DO $$
                             DECLARE
                                 trigger_found BOOLEAN;
@@ -143,13 +147,61 @@ class _PostgresTableTracker(BaseCreateTriggers):
                                 END IF;
                             END;
                             $$;"""
+
     GET_COLUMN_NAMES = """SELECT column_name AS columnName
                             FROM information_schema.columns
                             WHERE table_name = '{table}';"""
 
-    INSERT_TRIGGER = None
-    UPDATE_TRIGGER = None
-    DELETE_TRIGGER = None
+    _LOG_AFTER_INSERT_FUNC = """CREATE OR REPLACE FUNCTION log_after_insert() RETURNS TRIGGER AS $$
+                                BEGIN
+                                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                                    VALUES (
+                                        TG_TABLE_NAME,
+                                        'INSERT',
+                                        NULL,
+                                        row_to_json(NEW)::jsonb
+                                    );
+                                    RETURN NEW;
+                                END;
+                                $$ LANGUAGE plpgsql;"""
+
+    _LOG_AFTER_UPDATE_FUNC = """CREATE OR REPLACE FUNCTION log_after_update() RETURNS TRIGGER AS $$
+                                BEGIN
+                                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                                    VALUES (
+                                        TG_TABLE_NAME,
+                                        'UPDATE',
+                                        row_to_json(OLD)::jsonb,
+                                        row_to_json(NEW)::jsonb
+                                    );
+                                    RETURN NEW;
+                                END;
+                                $$ LANGUAGE plpgsql;"""
+
+    _LOG_AFTER_DELETE_FUNC = """CREATE OR REPLACE FUNCTION log_after_delete() RETURNS TRIGGER AS $$
+                                BEGIN
+                                    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                                    VALUES (
+                                        TG_TABLE_NAME,
+                                        'DELETE',
+                                        row_to_json(OLD)::jsonb,
+                                        NULL
+                                    );
+                                    RETURN OLD;
+                                END;
+                                $$ LANGUAGE plpgsql;"""
+
+    INSERT_TRIGGER = """CREATE TRIGGER after_{table_name}_insert
+                         AFTER INSERT ON {table_name}
+                         FOR EACH ROW EXECUTE FUNCTION log_after_insert();"""
+
+    UPDATE_TRIGGER = """CREATE TRIGGER after_{table_name}_update
+                        AFTER UPDATE ON {table_name}
+                        FOR EACH ROW EXECUTE FUNCTION log_after_update();"""
+
+    DELETE_TRIGGER = """CREATE TRIGGER after_{table_name}_delete
+                        AFTER DELETE ON {table_name}
+                        FOR EACH ROW EXECUTE FUNCTION log_after_delete();"""
 
     @abstractmethod
     def _connect(self):
