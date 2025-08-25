@@ -60,11 +60,18 @@ class BaseSQLHelper(_SharedLogger):
     """
 
     def __init__(self, **kwargs):
-        self._logger = self._setup_logger()
+        self._initialization_string = f"initialized {self.__str__()}"
+        self._logger = self._setup_logger(basic_config_level=kwargs.get('basic_config_level'))
         self._connection, self._cursor = None, None
         self._query_results = None
+
         if self._logger:
-            self._logger.info(f"initialized {self.__class__.__name__} v{self.__version__}")
+            self._logger.info(self._initialization_string)
+        elif not self._logger or kwargs.get('verbose_initialization'):
+            print(self._initialization_string)
+
+    def __str__(self):
+        return f"{self.__class__.__name__} v{self.__version__}"
 
     @property
     def __version__(self):
@@ -135,7 +142,7 @@ class BaseSQLHelper(_SharedLogger):
                 self._logger.debug("returning existing connection and cursor")
                 return self._connection, self._cursor
         try:
-            self._logger.debug("getting connection and cursor")
+            self._logger.debug(f"getting connection and cursor for {getattr(self, 'database', 'unknown database')}")
             self._connection = self._connect()
             self._cursor = self._connection.cursor()
             self._logger.debug("fetched connection and cursor")
@@ -143,6 +150,7 @@ class BaseSQLHelper(_SharedLogger):
         except Exception as e:
             self.log_and_raise_error(e)
             return None, None
+
     def cursor_check(self):
         """
         Checks if the cursor is properly initialized and ready for executing queries.
@@ -159,6 +167,35 @@ class BaseSQLHelper(_SharedLogger):
                 self._logger.error(e, exc_info=True)
                 raise e from None
 
+    @staticmethod
+    def normalize_single_result(result) -> (
+            Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
+        """
+        :param result: The input data that can be a tuple, list, or other iterable structure,
+        typically containing one or more elements; used to normalize to a simpler format.
+
+        :return: Returns a normalized result, which can be a single element or the processed input.
+        The returned value can be one of tuple, list, dict, string, or integer, based on input and processing logic.
+        If the input has a single element, it simplifies to that element.
+        If the input’s second value is blank, simplifies further.
+        :rtype: Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]
+        """
+        if result:
+            if len(result) == 1:
+                result = result[0]
+                # if the result is still one entry or the second entry of the result is blank
+                if len(result) == 1 or (len(result) == 2 and result[1] == ''):
+                    result = result[0]
+        return result
+
+    def _fetch_results(self):
+        try:
+            res = self._cursor.fetchall()
+        except Exception as e:
+            self._logger.debug(e, exc_info=True)
+            res = []
+        return res
+
     @deprecated(
         "This method is deprecated and will be removed in a future release. "
         "Please use the query method instead.")
@@ -174,34 +211,6 @@ class BaseSQLHelper(_SharedLogger):
         """
         self.query(sql_string, **kwargs)
 
-    @staticmethod
-    def normalize_single_result(result) -> (
-            Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
-        """
-        :param result: The input data that can be a tuple, list, or other iterable structure,
-        typically containing one or more elements; used to normalize to a simpler format.
-
-        :return: Returns a normalized result, which can be a single element or the processed input.
-        The returned value can be one of tuple, list, dict, string, or integer, based on input and processing logic.
-        If the input has a single element, it simplifies to that element.
-        If the input’s second value is blank, simplifies further.
-        :rtype: Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]
-        """
-        if len(result) == 1:
-            result = result[0]
-            # if the result is still one entry or the second entry of the result is blank
-            if len(result) == 1 or (len(result) == 2 and result[1] == ''):
-                result = result[0]
-        return result
-
-    def _fetch_results(self):
-        try:
-            res = self._cursor.fetchall()
-        except Exception as e:
-            self._logger.debug(e, exc_info=True)
-            res = []
-        return res
-
     def query(self, sql_string: str, **kwargs):
         """
         :param sql_string: The SQL query string to be executed.
@@ -215,20 +224,22 @@ class BaseSQLHelper(_SharedLogger):
             self._cursor.execute(sql_string)
 
             res = self._fetch_results()
+            self._process_results(res, is_commit)
 
-            if is_commit:
-                self._logger.info("committing changes")
-                self._connection.commit()
-            if res:
-                self._logger.info(f"{len(res)} item(s) returned.")
-                print(f"{len(res)} item(s) returned.")
-            else:
-                if not is_commit:
-                    self._logger.warning("query returned no results")
-            res = self.normalize_single_result(res)
-            self.query_results = res
         except Exception as e:
             self.log_and_raise_error(e)
+
+    def _process_results(self, results, is_commit):
+        if is_commit:
+            self._logger.info("committing changes")
+            self._connection.commit()
+        if results:
+            self._logger.info(f"{len(results)} item(s) returned.")
+            print(f"{len(results)} item(s) returned.")
+        else:
+            if not is_commit:
+                self._logger.warning("query returned no results")
+        self.query_results = results
 
     @property
     def query_results(self) -> Optional[List[tuple]]:
@@ -245,7 +256,7 @@ class BaseSQLHelper(_SharedLogger):
         :param value: The list of dictionaries containing query results or None to reset the results.
         :type value: List[dict] or None
         """
-        self._query_results = value
+        self._query_results = self.normalize_single_result(value)
 
     @property
     def list_dict_results(self):
@@ -324,13 +335,13 @@ class BaseConnectionAttributes(BaseSQLHelper):
     - trusted_connection: Specifies if a trusted connection is used. Defaults to 'yes'.
     - kwargs: Additional optional parameters, including 'logger', 'connection_string', 'username', and 'password'.
     """
-    _TRUSTED_CONNECTION_DEFAULT = 'yes'
+    _TRUSTED_CONNECTION_DEFAULT = None
     _DRIVER_DEFAULT = None
-    _INSTANCE_DEFAULT = 'SQLEXPRESS'
-    _DEFAULT_PORT = 1433
+    _INSTANCE_DEFAULT = None
+    _DEFAULT_PORT = None
 
-    def __init__(self, server, database, instance=_INSTANCE_DEFAULT, driver=_DRIVER_DEFAULT,
-                 trusted_connection=_TRUSTED_CONNECTION_DEFAULT, **kwargs):
+    def __init__(self, server, database, instance=None, driver=None,
+                 trusted_connection=None, **kwargs):
         super().__init__(**kwargs)
         self._connection_string = kwargs.get('connection_string', None)
 
@@ -340,20 +351,17 @@ class BaseConnectionAttributes(BaseSQLHelper):
             self.__class__.with_connection_string(self._connection_string, logger=self._logger)
 
         self.server = server
-        self.instance = instance
         self.database = database
-        self.driver = driver
+        self.instance = instance or self.__class__._INSTANCE_DEFAULT
+        self.driver = driver or self.__class__._DRIVER_DEFAULT
         self.username = kwargs.get('username', '')
         self._password = kwargs.get('password', '')
         self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
-        self.trusted_connection = trusted_connection
+        self.trusted_connection = trusted_connection or self.__class__._TRUSTED_CONNECTION_DEFAULT
 
         if all(self.connection_information):
             self._logger.debug(f"initialized {self.__class__.__name__} with the following connection parameters:\n"
                                f"{', '.join(['='.join(x) for x in self.connection_information.items() if x[1] is not None])}")
-            self._logger.info(f"initialized {self.__class__.__name__}")
-    def __str__(self):
-        return f"{self.__class__.__name__} v{self.__version__}"
 
     @abstractmethod
     def _connect(self):
@@ -377,7 +385,8 @@ class BaseConnectionAttributes(BaseSQLHelper):
                 'driver': self.driver,
                 'port': str(self.port),
                 'username': self.username or '',
-                'password': 'WITHHELD or None',
+                # Exclude passwords or return a placeholder
+                "password": "*****" if self._password else None,
                 'trusted_connection': self.trusted_connection}
 
     @property
@@ -397,7 +406,9 @@ class BaseConnectionAttributes(BaseSQLHelper):
                                        f"trusted_connection={self.trusted_connection}")
             # self._logger.debug(
             #     f"populated connection string as {self._connection_string}")
-        return self._connection_string
+
+            return self._connection_string
+        raise AttributeError("server, instance, database, and driver are required")
 
     @staticmethod
     def _connection_string_to_attributes(connection_string: str,
@@ -638,7 +649,7 @@ class BaseCreateTriggers(_SharedLogger):
         :return: A list of all uppercase class attribute names.
         :rtype: list
         """
-        return [x for x in self.__dir__() if x.isupper()]
+        return [x for x in self.__dir__() if x.isupper() and not x.startswith("_")]
 
     @property
     def class_attr_list(self):

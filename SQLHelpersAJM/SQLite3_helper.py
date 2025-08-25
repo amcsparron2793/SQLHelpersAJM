@@ -125,20 +125,8 @@ class SQLite3Helper(BaseSQLHelper):
     """
 
     def __init__(self, db_file_path: Union[str, Path], **kwargs):
-        self.logger_level = kwargs.get('logger_level', 'INFO')
         self.db_file_path = db_file_path
         super().__init__(**kwargs)
-
-    def _setup_logger(self, **kwargs):
-        """
-        Sets up the logger with a predefined configuration level.
-
-        :param kwargs: Additional keyword arguments that may be passed for setting up the logger.
-        :type kwargs: dict
-        :return: Configured logger instance.
-        :rtype: object
-        """
-        return super()._setup_logger(basic_config_level=self.logger_level)
 
     @property
     def __version__(self):

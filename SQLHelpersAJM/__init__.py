@@ -1,4 +1,6 @@
-from logging import getLogger, basicConfig, INFO, Logger
+import logging
+from logging import getLogger, basicConfig, INFO, WARNING, ERROR, CRITICAL, DEBUG, Logger
+from typing import Optional
 
 
 class _SharedLogger:
@@ -9,6 +11,28 @@ class _SharedLogger:
         _setup_logger(**kwargs):
             Sets up and returns a logger instance for the class.
     """
+    _DEFAULT_BCL = INFO
+
+    @staticmethod
+    def _validate_bcl(**kwargs):
+        bcl = kwargs.get('basic_config_level')
+        if (bcl in logging.getLevelNamesMapping().keys()
+                or bcl in logging.getLevelNamesMapping().values()):
+            return bcl
+        else:
+            return False
+
+    def _get_bcl(self, **kwargs):
+        bcl = None
+        logger:Optional[Logger] = kwargs.get('logger', None)
+        if kwargs.get('basic_config_level'):
+            bcl = self._validate_bcl(**kwargs)
+        if not bcl:
+            bcl = self.__class__._DEFAULT_BCL
+            if logger:
+                logger.info(f"Basic config level not set. Defaulting to {bcl}.")
+        return bcl
+
     def _setup_logger(self, **kwargs) -> Logger:
         """
         Sets up and returns a logger for the class.
@@ -18,7 +42,8 @@ class _SharedLogger:
         """
         logger = getLogger(self.__class__.__name__)
         if not logger.hasHandlers():
-            basicConfig(level=kwargs.get('basic_config_level', INFO))
+            bcl = self._get_bcl(logger=logger, **kwargs)
+            basicConfig(level=bcl)
         return logger
 
 
