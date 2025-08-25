@@ -61,7 +61,7 @@ class BaseSQLHelper(_SharedLogger):
 
     def __init__(self, **kwargs):
         self._initialization_string = f"initialized {self.__str__()}"
-        self._logger = self._setup_logger(basic_config_level=kwargs.get('base_config_level'))
+        self._logger = self._setup_logger(basic_config_level=kwargs.get('basic_config_level'))
         self._connection, self._cursor = None, None
         self._query_results = None
 
@@ -646,7 +646,7 @@ class BaseCreateTriggers(_SharedLogger):
         :return: A list of all uppercase class attribute names.
         :rtype: list
         """
-        return [x for x in self.__dir__() if x.isupper()]
+        return [x for x in self.__dir__() if x.isupper() and not x.startswith("_")]
 
     @property
     def class_attr_list(self):
