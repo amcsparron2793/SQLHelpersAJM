@@ -60,11 +60,18 @@ class BaseSQLHelper(_SharedLogger):
     """
 
     def __init__(self, **kwargs):
-        self._logger = self._setup_logger()
+        self._initialization_string = f"initialized {self.__str__()}"
+        self._logger = self._setup_logger(basic_config_level=kwargs.get('base_config_level'))
         self._connection, self._cursor = None, None
         self._query_results = None
+
         if self._logger:
-            self._logger.info(f"initialized {self.__class__.__name__} v{self.__version__}")
+            self._logger.info(self._initialization_string)
+        elif not self._logger or kwargs.get('verbose_initialization'):
+            print(self._initialization_string)
+
+    def __str__(self):
+        return f"{self.__class__.__name__} v{self.__version__}"
 
     @property
     def __version__(self):
@@ -135,7 +142,7 @@ class BaseSQLHelper(_SharedLogger):
                 self._logger.debug("returning existing connection and cursor")
                 return self._connection, self._cursor
         try:
-            self._logger.debug("getting connection and cursor")
+            self._logger.debug(f"getting connection and cursor for {getattr(self, 'database', 'unknown database')}")
             self._connection = self._connect()
             self._cursor = self._connection.cursor()
             self._logger.debug("fetched connection and cursor")
@@ -143,6 +150,7 @@ class BaseSQLHelper(_SharedLogger):
         except Exception as e:
             self.log_and_raise_error(e)
             return None, None
+
     def cursor_check(self):
         """
         Checks if the cursor is properly initialized and ready for executing queries.
@@ -324,13 +332,13 @@ class BaseConnectionAttributes(BaseSQLHelper):
     - trusted_connection: Specifies if a trusted connection is used. Defaults to 'yes'.
     - kwargs: Additional optional parameters, including 'logger', 'connection_string', 'username', and 'password'.
     """
-    _TRUSTED_CONNECTION_DEFAULT = 'yes'
+    _TRUSTED_CONNECTION_DEFAULT = None
     _DRIVER_DEFAULT = None
-    _INSTANCE_DEFAULT = 'SQLEXPRESS'
-    _DEFAULT_PORT = 1433
+    _INSTANCE_DEFAULT = None
+    _DEFAULT_PORT = None
 
-    def __init__(self, server, database, instance=_INSTANCE_DEFAULT, driver=_DRIVER_DEFAULT,
-                 trusted_connection=_TRUSTED_CONNECTION_DEFAULT, **kwargs):
+    def __init__(self, server, database, instance=None, driver=None,
+                 trusted_connection=None, **kwargs):
         super().__init__(**kwargs)
         self._connection_string = kwargs.get('connection_string', None)
 
@@ -340,20 +348,17 @@ class BaseConnectionAttributes(BaseSQLHelper):
             self.__class__.with_connection_string(self._connection_string, logger=self._logger)
 
         self.server = server
-        self.instance = instance
         self.database = database
-        self.driver = driver
+        self.instance = instance or self.__class__._INSTANCE_DEFAULT
+        self.driver = driver or self.__class__._DRIVER_DEFAULT
         self.username = kwargs.get('username', '')
         self._password = kwargs.get('password', '')
         self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
-        self.trusted_connection = trusted_connection
+        self.trusted_connection = trusted_connection or self.__class__._TRUSTED_CONNECTION_DEFAULT
 
         if all(self.connection_information):
             self._logger.debug(f"initialized {self.__class__.__name__} with the following connection parameters:\n"
                                f"{', '.join(['='.join(x) for x in self.connection_information.items() if x[1] is not None])}")
-            self._logger.info(f"initialized {self.__class__.__name__}")
-    def __str__(self):
-        return f"{self.__class__.__name__} v{self.__version__}"
 
     @abstractmethod
     def _connect(self):
@@ -377,7 +382,8 @@ class BaseConnectionAttributes(BaseSQLHelper):
                 'driver': self.driver,
                 'port': str(self.port),
                 'username': self.username or '',
-                'password': 'WITHHELD or None',
+                # Exclude passwords or return a placeholder
+                "password": "*****" if self._password else None,
                 'trusted_connection': self.trusted_connection}
 
     @property
@@ -397,7 +403,9 @@ class BaseConnectionAttributes(BaseSQLHelper):
                                        f"trusted_connection={self.trusted_connection}")
             # self._logger.debug(
             #     f"populated connection string as {self._connection_string}")
-        return self._connection_string
+
+            return self._connection_string
+        raise AttributeError("server, instance, database, and driver are required")
 
     @staticmethod
     def _connection_string_to_attributes(connection_string: str,

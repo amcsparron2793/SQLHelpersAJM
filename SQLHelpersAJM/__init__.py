@@ -17,8 +17,12 @@ class _SharedLogger:
         :rtype: logging.Logger
         """
         logger = getLogger(self.__class__.__name__)
+        if kwargs.get('basic_config_level'):
+            bcl = kwargs.get('basic_config_level')
+        else:
+            bcl = INFO
         if not logger.hasHandlers():
-            basicConfig(level=kwargs.get('basic_config_level', INFO))
+            basicConfig(level=bcl)
         return logger
 
 

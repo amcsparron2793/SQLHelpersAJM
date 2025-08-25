@@ -85,13 +85,15 @@ class SQLServerHelper(BaseConnectionAttributes):
     database connections by leveraging the pyodbc library.
     """
     _DRIVER_DEFAULT = '{SQL Server}'
+    _TRUSTED_CONNECTION_DEFAULT = 'yes'
+    _INSTANCE_DEFAULT = 'SQLEXPRESS'
+    _DEFAULT_PORT = 1433
 
-    def __init__(self, server, database, driver=_DRIVER_DEFAULT, **kwargs):
+    def __init__(self, server, database, **kwargs):
         self.server = server
         self.database = database
-        self.driver = driver
         self._logger = self._setup_logger(**kwargs)
-        super().__init__(self.server, self.database, driver=self.driver, **kwargs)
+        super().__init__(self.server, self.database, **kwargs)
 
     def _connect(self):
         """
@@ -125,9 +127,9 @@ class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCr
 
 if __name__ == '__main__':
     # noinspection SpellCheckingInspection
-    gis_prod_connection_string = ("driver={SQL Server};server=10NE-WTR44;instance=SQLEXPRESS;"
-                                  "database=AndrewTest;"
-                                  "trusted_connection=yes;username=sa;password=")
+    #input('Please Enter Password: ')
+    gis_prod_connection_string = ("server=10NE-WTR44;trusted_connection=yes;"
+                                  f"database=AndrewTest;username=sa;password={None}")
     #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
     #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
     #sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
