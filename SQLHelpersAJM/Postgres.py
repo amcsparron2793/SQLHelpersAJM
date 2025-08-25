@@ -151,8 +151,8 @@ class PostgresHelper(BaseConnectionAttributes):
         # TODO: account for already supplied schemas
         from_statements = [x.strip() for x in sql_string.lower().split('from')][-1].split(
             ',')  # sql_string.split('FROM')[-1]]
-        new_froms = {x.strip(): '.'.join((self.schema_choice, x.strip())) for x in from_statements}
-        sql_string = sql_string.replace(from_statements[0], new_froms.get(from_statements[0]))
+        new_from_statements = {x.strip(): '.'.join((self.schema_choice, x.strip())) for x in from_statements}
+        sql_string = sql_string.replace(from_statements[0], new_from_statements.get(from_statements[0]))
         return sql_string
 
     def query(self, sql_string: str, **kwargs):
