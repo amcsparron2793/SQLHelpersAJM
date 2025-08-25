@@ -167,6 +167,35 @@ class BaseSQLHelper(_SharedLogger):
                 self._logger.error(e, exc_info=True)
                 raise e from None
 
+    @staticmethod
+    def normalize_single_result(result) -> (
+            Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
+        """
+        :param result: The input data that can be a tuple, list, or other iterable structure,
+        typically containing one or more elements; used to normalize to a simpler format.
+
+        :return: Returns a normalized result, which can be a single element or the processed input.
+        The returned value can be one of tuple, list, dict, string, or integer, based on input and processing logic.
+        If the input has a single element, it simplifies to that element.
+        If the input’s second value is blank, simplifies further.
+        :rtype: Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]
+        """
+        if result:
+            if len(result) == 1:
+                result = result[0]
+                # if the result is still one entry or the second entry of the result is blank
+                if len(result) == 1 or (len(result) == 2 and result[1] == ''):
+                    result = result[0]
+        return result
+
+    def _fetch_results(self):
+        try:
+            res = self._cursor.fetchall()
+        except Exception as e:
+            self._logger.debug(e, exc_info=True)
+            res = []
+        return res
+
     @deprecated(
         "This method is deprecated and will be removed in a future release. "
         "Please use the query method instead.")
@@ -182,34 +211,6 @@ class BaseSQLHelper(_SharedLogger):
         """
         self.query(sql_string, **kwargs)
 
-    @staticmethod
-    def normalize_single_result(result) -> (
-            Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]):
-        """
-        :param result: The input data that can be a tuple, list, or other iterable structure,
-        typically containing one or more elements; used to normalize to a simpler format.
-
-        :return: Returns a normalized result, which can be a single element or the processed input.
-        The returned value can be one of tuple, list, dict, string, or integer, based on input and processing logic.
-        If the input has a single element, it simplifies to that element.
-        If the input’s second value is blank, simplifies further.
-        :rtype: Union[Optional[tuple], Optional[list], Optional[dict], Optional[str], Optional[int]]
-        """
-        if len(result) == 1:
-            result = result[0]
-            # if the result is still one entry or the second entry of the result is blank
-            if len(result) == 1 or (len(result) == 2 and result[1] == ''):
-                result = result[0]
-        return result
-
-    def _fetch_results(self):
-        try:
-            res = self._cursor.fetchall()
-        except Exception as e:
-            self._logger.debug(e, exc_info=True)
-            res = []
-        return res
-
     def query(self, sql_string: str, **kwargs):
         """
         :param sql_string: The SQL query string to be executed.
@@ -223,20 +224,22 @@ class BaseSQLHelper(_SharedLogger):
             self._cursor.execute(sql_string)
 
             res = self._fetch_results()
+            self._process_results(res, is_commit)
 
-            if is_commit:
-                self._logger.info("committing changes")
-                self._connection.commit()
-            if res:
-                self._logger.info(f"{len(res)} item(s) returned.")
-                print(f"{len(res)} item(s) returned.")
-            else:
-                if not is_commit:
-                    self._logger.warning("query returned no results")
-            res = self.normalize_single_result(res)
-            self.query_results = res
         except Exception as e:
             self.log_and_raise_error(e)
+
+    def _process_results(self, results, is_commit):
+        if is_commit:
+            self._logger.info("committing changes")
+            self._connection.commit()
+        if results:
+            self._logger.info(f"{len(results)} item(s) returned.")
+            print(f"{len(results)} item(s) returned.")
+        else:
+            if not is_commit:
+                self._logger.warning("query returned no results")
+        self.query_results = results
 
     @property
     def query_results(self) -> Optional[List[tuple]]:
@@ -253,7 +256,7 @@ class BaseSQLHelper(_SharedLogger):
         :param value: The list of dictionaries containing query results or None to reset the results.
         :type value: List[dict] or None
         """
-        self._query_results = value
+        self._query_results = self.normalize_single_result(value)
 
     @property
     def list_dict_results(self):
