@@ -2,6 +2,7 @@ from abc import abstractmethod
 
 import psycopg
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
+from backend import ABCCreateTriggers
 
 # TODO: finish this, it needs to be handled differently due to functions
 """Functions for Triggers:
@@ -110,7 +111,7 @@ The CREATE TRIGGER statements attach the functions to the target table using FOR
 # AFTER DELETE ON {table_name}
 # FOR EACH ROW EXECUTE FUNCTION log_after_delete();
 class _PostgresTableTracker(BaseCreateTriggers):
-    TABLES_TO_TRACK = []
+    TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
 
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log (
     id SERIAL PRIMARY KEY,
@@ -191,6 +192,17 @@ class _PostgresTableTracker(BaseCreateTriggers):
                                 END;
                                 $$ LANGUAGE plpgsql;"""
 
+    _FUNC_EXISTS_CHECK = """SELECT 
+    EXISTS (
+        SELECT 1 
+        FROM pg_proc p
+        JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE p.proname = 'function_name'  -- Replace with your function name
+        AND n.nspname = 'schema_name'     -- Replace with your schema name
+        -- Uncomment next line if you want to check argument types
+        -- AND pg_catalog.pg_get_function_identity_arguments(p.oid) = 'arg1_type, arg2_type'
+    );"""
+
     INSERT_TRIGGER = """CREATE TRIGGER after_{table_name}_insert
                          AFTER INSERT ON {table_name}
                          FOR EACH ROW EXECUTE FUNCTION log_after_insert();"""
@@ -235,11 +247,34 @@ class PostgresHelper(BaseConnectionAttributes):
         return cxn
 
 
+class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCCreateTriggers):
+    TABLES_TO_TRACK = ['test_table']
+
+    def __init__(self, server, database, **kwargs):
+        super().__init__(server, database, **kwargs)
+        _PostgresTableTracker.__init__(self, **kwargs)
+        # the name of the class attr, and the name of the psql function as a tuple
+        self._psql_function_attrs_func_name = [(x, (''.join(x[1:]).split('_FUNC')[0].lower()) + '()')
+                                               for x in self.__dir__() if x.startswith('_LOG_AFTER_')
+                                               and x.endswith('_FUNC')]
+        self._check_or_create_functions()
+
+    def _check_or_create_functions(self):
+        for f in self._psql_function_attrs_func_name:
+            self.query(self._FUNC_EXISTS_CHECK.replace(
+                'function_name', f[1]).replace('schema_name', 'public'))
+            exists = bool(self.query_results)
+            if not exists:
+                self._logger.info(f"Creating function {f[1]}")
+                self.query(getattr(self.__class__, f[0]), is_commit=True)
+            self._logger.debug(f"Function {f[1]} exists: {exists}")
+
+
 if __name__ == '__main__':
-    pg = PostgresHelper('192.168.1.7',  # port=5432,
-                        database='postgres',
-                        username='postgres',
-                        password=input('password: '))
+    pg = PostgresHelperTT('192.168.1.7',  # port=5432,
+                          database='postgres',
+                          username='postgres',
+                          password=input('Enter Postgres db password for: '))
     pg.get_connection_and_cursor()
     pg.query("select * from pi.test_table;")
     print(pg.query_results)
