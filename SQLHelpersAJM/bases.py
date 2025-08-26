@@ -7,7 +7,6 @@ from SQLHelpersAJM import _SharedLogger
 from SQLHelpersAJM._version import __version__
 from backend import deprecated, NoCursorInitializedError, NoResultsToConvertError, NoTrackedTablesError, \
     MissingRequiredClassAttribute, UserPassInput
-from backend.errors import InvalidInputMode
 
 
 class BaseSQLHelper(_SharedLogger):
