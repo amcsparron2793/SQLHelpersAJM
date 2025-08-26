@@ -1,21 +1,23 @@
 from abc import abstractmethod
+from getpass import getpass
 
 import psycopg
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
 from backend import ABCPostgresCreateTriggers
 
 
+# noinspection SqlNoDataSourceInspection
 class _PostgresTableTracker(BaseCreateTriggers):
     TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
 
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log (
-    id SERIAL PRIMARY KEY,
-    table_name TEXT NOT NULL,
-    operation TEXT NOT NULL,
-    old_row_data JSONB,
-    new_row_data JSONB,
-    change_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);"""
+                                    id SERIAL PRIMARY KEY,
+                                    table_name TEXT NOT NULL,
+                                    operation TEXT NOT NULL,
+                                    old_row_data JSONB,
+                                    new_row_data JSONB,
+                                    change_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                );"""
 
     AUDIT_LOG_CREATED_CHECK = """ select EXISTS(SELECT FROM pg_tables 
                                     WHERE schemaname = 'public' 
@@ -115,6 +117,7 @@ class PostgresHelper(BaseConnectionAttributes):
     _DEFAULT_PORT = 5432
     VALID_SCHEMA_CHOICES_QUERY = """SELECT schema_name FROM information_schema.schemata;"""
     _DEFAULT_SCHEMA_CHOICE = 'public'
+    _GET_PASS_PROMPT = "Enter password for database user '{}' (no output will show on screen): "
 
     def __init__(self, server, database, **kwargs):
         self.instance = kwargs.get('instance', self.__class__._INSTANCE_DEFAULT)
@@ -124,7 +127,11 @@ class PostgresHelper(BaseConnectionAttributes):
 
         self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
         self.username = kwargs.get('username', '')
-        self._password = kwargs.get('password', '')
+        self._password = kwargs.get('password',
+                                    None)
+        if not self._password:
+            self._password = getpass(self.__class__._GET_PASS_PROMPT.format(self.username))
+
         self._valid_schema_choices = None
         self._schema_choice = None
         self.initialize_schema_choices(**kwargs)
@@ -132,6 +139,7 @@ class PostgresHelper(BaseConnectionAttributes):
     def initialize_schema_choices(self, **kwargs):
         self.get_connection_and_cursor()
         self.schema_choice = kwargs.get('schema_choice', self.__class__._DEFAULT_SCHEMA_CHOICE)
+        self._force_connection_closed()
 
     def _connect(self):
         cxn_params = {'host': self.server,
@@ -230,5 +238,4 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
 if __name__ == '__main__':
     pg = PostgresHelperTT('192.168.1.7',  # port=5432,
                           database='postgres',
-                          username='postgres',
-                          password=input('Enter Postgres db password for: '))#, schema_choice='pi')
+                          username='postgres')
