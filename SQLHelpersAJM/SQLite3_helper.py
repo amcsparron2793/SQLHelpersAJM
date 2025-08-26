@@ -92,6 +92,17 @@ class _SQLite3TableTracker(BaseCreateTriggers):
                 END;
                 """
 
+    _GET_TRIGGER_INFO = """SELECT
+                            name AS TriggerName,
+                            tbl_name AS TableName,
+                            sql AS TriggerDefinition
+                        FROM 
+                            sqlite_master
+                        WHERE 
+                            type = 'trigger'
+                        ORDER BY 
+                            name;"""
+
     @abstractmethod
     def _connect(self):
         ...
@@ -204,6 +215,8 @@ if __name__ == "__main__":
     junk_db_filepath = r"C:\Users\amcsparron\Desktop\Python_Projects\SQLHelpersAJM\Misc_Project_Files\test_db.db"
     # sql = SQLlite3Helper(db_file_path=junk_db_filepath)
     sql_tt = SQLite3HelperTT(db_file_path=junk_db_filepath)
+    sql_tt.get_all_trigger_info(print_info=True)
+
     # sql_tt.query("insert into test_table(name, age) VALUES ('andrew', 32) returning id;", is_commit=True)
     # sql_tt.query("select * from audit_log;", is_commit=False)
     #print(sql_tt.query_results)

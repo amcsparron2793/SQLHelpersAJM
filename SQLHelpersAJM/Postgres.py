@@ -107,6 +107,32 @@ class _PostgresTableTracker(BaseCreateTriggers):
                         AFTER DELETE ON {table_name}
                         FOR EACH ROW EXECUTE FUNCTION log_after_delete();"""
 
+    _GET_TRIGGER_INFO = """SELECT
+            tgname AS TriggerName,
+            tgisinternal AS IsInternal,
+            n.nspname AS SchemaName,
+            c.relname AS TableName,
+            CASE 
+                WHEN tgtype & 1 = 1 THEN 'AFTER' 
+                WHEN tgtype & 2 = 2 THEN 'BEFORE' 
+                ELSE 'INSTEAD OF' 
+            END AS TriggerTiming,
+            tgfoid::regproc AS TriggerFunction,
+            tgrelid::regclass::text AS TriggeredTable,
+            pg_catalog.pg_get_triggerdef(t.oid, true) AS TriggerDefinition,
+            t.tgparentid AS ParentTriggerId,
+            pg_catalog.pg_get_userbyid(t.tgowner) AS Owner
+        FROM 
+            pg_trigger AS t
+        JOIN 
+            pg_class AS c ON t.tgrelid = c.oid
+        JOIN 
+            pg_namespace AS n ON c.relnamespace = n.oid
+        WHERE 
+            NOT t.tgisinternal
+        ORDER BY 
+            tgname;"""
+
     @abstractmethod
     def _connect(self):
         ...
@@ -135,6 +161,9 @@ class PostgresHelper(BaseConnectionAttributes):
         self._valid_schema_choices = None
         self._schema_choice = None
         self.initialize_schema_choices(**kwargs)
+
+    def __version__(self):
+        return "0.1"
 
     def initialize_schema_choices(self, **kwargs):
         self.get_connection_and_cursor()
@@ -204,6 +233,9 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
         self._psql_function_attrs_func_name = [(x, self.__class__._format_func_name(x)) for x
                                                in self.__dir__() if self.__class__._is_func_attr(x)]
         self._check_or_create_functions()
+
+    def __version__(self):
+        return "0.1"
 
     @classmethod
     def _format_func_name(cls, name: str):

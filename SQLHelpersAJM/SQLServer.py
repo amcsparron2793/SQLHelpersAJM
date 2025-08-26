@@ -9,6 +9,21 @@ from backend import ABCCreateTriggers
 
 # noinspection SqlResolve,SqlIdentifier
 class _SQLServerTableTracker(BaseCreateTriggers):
+    """
+    _Internal class to handle SQL Server table tracking by creating and managing audit triggers._
+
+    This class creates triggers on specified tables to track changes (insert, update, delete) and logs them into an `audit_log` table. It provides predefined SQL statements for managing triggers and retrieving metadata information necessary for creating and ensuring the audit mechanism remains functional.
+
+    Attributes:
+        TABLES_TO_TRACK: List of tables for which triggers need to be created. Defaults to a placeholder value.
+        AUDIT_LOG_CREATE_TABLE: SQL query string to create the `audit_log` table if it does not exist.
+        AUDIT_LOG_CREATED_CHECK: SQL query string to verify the existence of the `audit_log` table.
+        HAS_TRIGGER_CHECK: SQL query string to check if a specific table already has associated triggers.
+        GET_COLUMN_NAMES: SQL query string to fetch column names of a specific table.
+        INSERT_TRIGGER: SQL query string to create a trigger that logs insert operations into the `audit_log` table.
+        UPDATE_TRIGGER: SQL query string to create a trigger that logs update operations into the `audit_log` table.
+        DELETE_TRIGGER: SQL query string to create a trigger that logs delete operations into the `audit_log` table.
+    """
     TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log
 (
@@ -30,47 +45,67 @@ FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = '{table}';"""
 
     INSERT_TRIGGER = """CREATE TRIGGER after_{table_name}_insert
-ON {table_name}
-AFTER INSERT
-AS
-BEGIN
-    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-    SELECT 
-        '{table_name}' AS table_name, 
-        'INSERT' AS operation, 
-        NULL AS old_row_data, 
-        (SELECT * FROM INSERTED FOR JSON AUTO) AS new_row_json
-    FROM INSERTED;
-END;"""
+                        ON {table_name}
+                        AFTER INSERT
+                        AS
+                        BEGIN
+                            INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                            SELECT 
+                                '{table_name}' AS table_name, 
+                                'INSERT' AS operation, 
+                                NULL AS old_row_data, 
+                                (SELECT * FROM INSERTED FOR JSON AUTO) AS new_row_json
+                            FROM INSERTED;
+                        END;"""
+
     UPDATE_TRIGGER = """CREATE TRIGGER after_{table_name}_update
-ON {table_name}
-AFTER UPDATE
-AS
-BEGIN
-    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-    SELECT 
-        '{table_name}' AS table_name, 
-        'UPDATE' AS operation,  
-        (SELECT * FROM DELETED FOR JSON AUTO) AS old_row_json, 
-        (SELECT * FROM INSERTED FOR JSON AUTO) AS new_row_json
-    FROM INSERTED 
-    INNER JOIN DELETED 
-    ON INSERTED.id = DELETED.id;
-END;"""
+                        ON {table_name}
+                        AFTER UPDATE
+                        AS
+                        BEGIN
+                            INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                            SELECT 
+                                '{table_name}' AS table_name, 
+                                'UPDATE' AS operation,  
+                                (SELECT * FROM DELETED FOR JSON AUTO) AS old_row_json, 
+                                (SELECT * FROM INSERTED FOR JSON AUTO) AS new_row_json
+                            FROM INSERTED 
+                            INNER JOIN DELETED 
+                            ON INSERTED.id = DELETED.id;
+                        END;"""
     # noinspection SqlWithoutWhere
     DELETE_TRIGGER = """CREATE TRIGGER after_{table_name}_delete
-ON {table_name}
-AFTER DELETE
-AS
-BEGIN
-    INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
-    SELECT 
-        '{table_name}' AS table_name, 
-        'DELETE' AS operation,  
-        (SELECT * FROM DELETED FOR JSON AUTO) AS old_row_json, 
-        NULL AS new_row_json
-    FROM DELETED;
-END;"""
+                        ON {table_name}
+                        AFTER DELETE
+                        AS
+                        BEGIN
+                            INSERT INTO audit_log (table_name, operation, old_row_data, new_row_data)
+                            SELECT 
+                                '{table_name}' AS table_name, 
+                                'DELETE' AS operation,  
+                                (SELECT * FROM DELETED FOR JSON AUTO) AS old_row_json, 
+                                NULL AS new_row_json
+                            FROM DELETED;
+                        END;"""
+
+    _GET_TRIGGER_INFO = """SELECT
+                            t.name AS TriggerName,
+                            t.is_disabled AS IsDisabled,
+                            s.name AS SchemaName,
+                            o.name AS TableName,
+                            o.type_desc AS ObjectType,
+                            t.create_date AS CreatedDate,
+                            t.modify_date AS LastModifiedDate
+                        FROM
+                            sys.triggers AS t
+                        JOIN
+                            sys.objects AS o ON t.parent_id = o.object_id
+                        JOIN
+                            sys.schemas AS s ON o.schema_id = s.schema_id
+                        WHERE
+                            t.type_desc = 'SQL_TRIGGER'
+                        ORDER BY
+                            t.name;"""
 
     @abstractmethod
     def _connect(self):
@@ -110,10 +145,21 @@ class SQLServerHelper(BaseConnectionAttributes):
 
     @property
     def __version__(self):
-        return '0.0.1'
+        return '0.1'
 
 
 class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCreateTriggers):
+    """
+    SQLServerHelperTT is a specialized class that combines the functionality of SQLServerHelper and _SQLServerTableTracker,
+    with a custom metaclass ABCCreateTriggers applied to provide automatic trigger creation for table tracking in a SQL Server.
+
+    Attributes:
+        TABLES_TO_TRACK: A list to specify the tables to be tracked by this class.
+
+    Methods:
+        __init__: Initializes the SQLServerHelperTT object, calling the constructors of SQLServerHelper and _SQLServerTableTracker.
+        __version__: A property that returns the current version of the class.
+    """
     TABLES_TO_TRACK = []
 
     def __init__(self, server, database, **kwargs):
@@ -122,39 +168,12 @@ class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCr
 
     @property
     def __version__(self):
-        return "0.0.1"
+        return "0.1"
 
 
 if __name__ == '__main__':
     # noinspection SpellCheckingInspection
-    #input('Please Enter Password: ')
     gis_prod_connection_string = ("server=10NE-WTR44;trusted_connection=yes;"
                                   f"database=AndrewTest;username=sa;password={None}")
-    #SQLServerHelper.with_connection_string(gis_prod_connection_string)#server='10.56.211.116', database='gisprod')
-    #sql_srv = SQLServerHelper(server='10NE-WTR44', instance='SQLEXPRESS', database='gisprod')#, username='sa', password=)
-    #sql_srv = SQLServerHelper.with_connection_string(gis_prod_connection_string)
-    #sql_srv.get_connection_and_cursor()
     sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
-    #sql_srv.query("select SYSTEM_USER")
-    #sql_srv.query("insert into AndrewTestTable(FirstName, LastName) VALUES ('andrew', 'mcsparron') --returning id;", is_commit=True)
-    #sql_srv.generate_triggers_for_all_tables()
-#     sql_srv.query("""SELECT
-#     t.name AS TriggerName,
-#     t.is_disabled AS IsDisabled,
-#     s.name AS SchemaName,
-#     o.name AS TableName,
-#     o.type_desc AS ObjectType,
-#     t.create_date AS CreatedDate,
-#     t.modify_date AS LastModifiedDate
-# FROM
-#     sys.triggers AS t
-# JOIN
-#     sys.objects AS o ON t.parent_id = o.object_id
-# JOIN
-#     sys.schemas AS s ON o.schema_id = s.schema_id
-# WHERE
-#     t.type_desc = 'SQL_TRIGGER'
-# ORDER BY
-#     t.name;""", is_commit=False)
-    #sql_srv.query("select * from audit_log;", is_commit=False)
-    #print(sql_srv.query_results)
+    sql_srv.get_all_trigger_info(print_info=True)

@@ -55,6 +55,15 @@ class ABCCreateTriggers(ABCMeta, type):
     _MANDATORY_ATTRIBUTE_UNDEFINED = 'undefined'
 
     def __new__(mcs, name, bases, dct):
+        """
+        :param mcs: The metaclass instance.
+        :param name: The name of the class being created.
+        :type name: str
+        :param bases: A tuple of the base classes for the class being created.
+        :type bases: tuple
+        :param dct: A dictionary containing the attributes of the class being created.
+        :type dct: dict
+        """
         mandatory_class_attrs = mcs._get_mandatory_class_attrs()
         name_value_validation_dict = mcs.get_name_value_validation_dict(bases)
 
@@ -70,6 +79,16 @@ class ABCCreateTriggers(ABCMeta, type):
 
     @classmethod
     def _valid_value(mcs, base_class, value):
+        """
+        :param mcs: The metaclass instance
+        :type mcs: type
+        :param base_class: The class from which the attribute is being retrieved
+        :type base_class: type
+        :param value: The name of the attribute to validate
+        :type value: str
+        :return: A boolean indicating whether the attribute exists, is not None, is not a boolean, and has a non-zero length
+        :rtype: bool
+        """
         # Retrieve the actual value of the attribute from the base class
         attr_value = getattr(base_class, value, None)
         # Ensure the attribute has a length and is not None (but avoid calling len() on bool or None)
@@ -79,6 +98,12 @@ class ABCCreateTriggers(ABCMeta, type):
 
     @classmethod
     def get_name_value_validation_dict(mcs, bases):
+        """
+        :param bases: A tuple of base classes to be inspected for attributes that are uppercase and not private (do not start with an underscore).
+        :type bases: tuple
+        :return: A dictionary mapping attribute names (that are uppercase and not private) to their validated values through the class method `_valid_value`.
+        :rtype: dict
+        """
         name_value_validation = {}
         for x in bases:
             for y in dir(x):
@@ -88,12 +113,27 @@ class ABCCreateTriggers(ABCMeta, type):
 
     @classmethod
     def _get_mandatory_class_attrs(mcs):
-        """Retrieve mandatory class attributes."""
+        """
+        Retrieves a list of mandatory class attributes for the metaclass.
+        Mandatory attributes are defined as attributes in the class dictionary that:
+        1. Do not start with an underscore (_).
+        2. Are in uppercase.
+
+        :return: A list of mandatory class attribute names.
+        :rtype: list
+        """
         return [attr for attr in mcs.__dict__ if not attr.startswith('_') and attr.isupper()]
 
     @classmethod
     def _validate_class_attributes(mcs, mandatory_attrs, name_value_dict):
-        """Validate class attributes and identify missing or undefined attributes."""
+        """
+        :param mandatory_attrs: A collection containing the attributes that must be present in the `name_value_dict`.
+        :type mandatory_attrs: iterable
+        :param name_value_dict: A dictionary of attribute names to their respective values to be validated.
+        :type name_value_dict: dict
+        :return: A set of tuples where each tuple contains a missing or invalid attribute name and its corresponding error type.
+        :rtype: set
+        """
         failed_validation = {
             (attr,
              mcs._MANDATORY_ATTRIBUTE_UNDEFINED if not value
@@ -111,6 +151,19 @@ class ABCCreateTriggers(ABCMeta, type):
 
 
 class ABCPostgresCreateTriggers(ABCCreateTriggers):
+    """
+    ABCPostgresCreateTriggers is a class that extends ABCCreateTriggers and is designed to handle the creation of triggers in a PostgreSQL database. The class defines attributes related to the logging and validation processes and provides a method to retrieve mandatory class attributes.
+
+    Attributes:
+    - LOG_AFTER_INSERT_FUNC: Placeholder for the SQL function name or logic for logging after an insert operation.
+    - LOG_AFTER_UPDATE_FUNC: Placeholder for the SQL function name or logic for logging after an update operation.
+    - LOG_AFTER_DELETE_FUNC: Placeholder for the SQL function name or logic for logging after a delete operation.
+    - FUNC_EXISTS_CHECK: Placeholder for the SQL query or logic to check the existence of a function.
+    - VALID_SCHEMA_CHOICES_QUERY: Placeholder for the SQL query to retrieve valid schema choices.
+
+    Methods:
+    - _get_mandatory_class_attrs(mcs): Class method to retrieve mandatory class attributes by filtering out private attributes and ensuring they are uppercase.
+    """
     LOG_AFTER_INSERT_FUNC = None
     LOG_AFTER_UPDATE_FUNC = None
     LOG_AFTER_DELETE_FUNC = None
@@ -119,5 +172,11 @@ class ABCPostgresCreateTriggers(ABCCreateTriggers):
 
     @classmethod
     def _get_mandatory_class_attrs(mcs):
-        """Retrieve mandatory class attributes."""
+        """
+        Returns a list of mandatory class attributes defined in the metaclass.
+        Mandatory attributes are considered as those which are uppercase and do not start with an underscore.
+
+        :return: List of mandatory class attributes.
+        :rtype: list
+        """
         return [attr for attr in mcs.__dir__(mcs) if not attr.startswith('_') and attr.isupper()]

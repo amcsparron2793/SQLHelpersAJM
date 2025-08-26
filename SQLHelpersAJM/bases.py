@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from collections import ChainMap
 from typing import Union, Optional, List
+from json import dumps
 
 from SQLHelpersAJM import _SharedLogger
 from SQLHelpersAJM._version import __version__
@@ -218,7 +219,7 @@ class BaseSQLHelper(_SharedLogger):
         :return: None
         :rtype: None
         """
-        is_commit = kwargs.get('is_commit', False)
+        is_commit = kwargs.pop('is_commit', False)
         try:
             self.cursor_check()
             self._cursor.execute(sql_string)
@@ -505,6 +506,7 @@ class BaseCreateTriggers(_SharedLogger):
     """
 
     _MAGIC_IGNORE_STRING = 'not a value'
+    _GET_TRIGGER_INFO = None
 
     def __init__(self, **kwargs):
         self._cursor = None
@@ -806,3 +808,9 @@ class BaseCreateTriggers(_SharedLogger):
             self._logger.info('triggers committed successfully')
         if already_created_counter > 0:
             self._logger.info(f'{already_created_counter} trigger(s) were already present')
+
+    def get_all_trigger_info(self, print_info=False, **kwargs):
+        self.query(self.__class__._GET_TRIGGER_INFO, silent_process=kwargs.get('silent_process', True))
+        if print_info:
+            print(dumps(self.list_dict_results, indent=4, default=str))
+        return self.list_dict_results
