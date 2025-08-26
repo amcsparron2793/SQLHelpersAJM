@@ -1,13 +1,12 @@
 from abc import abstractmethod
 from collections import ChainMap
-from getpass import getpass, getuser
 from typing import Union, Optional, List
 from json import dumps
 
 from SQLHelpersAJM import _SharedLogger
 from SQLHelpersAJM._version import __version__
 from backend import deprecated, NoCursorInitializedError, NoResultsToConvertError, NoTrackedTablesError, \
-    MissingRequiredClassAttribute
+    MissingRequiredClassAttribute, UserPassInput
 from backend.errors import InvalidInputMode
 
 
@@ -344,8 +343,6 @@ class BaseConnectionAttributes(BaseSQLHelper):
     _DRIVER_DEFAULT = None
     _INSTANCE_DEFAULT = None
     _DEFAULT_PORT = None
-    _GET_PASS_PROMPT = "Enter password for database user '{}' (no output will show on screen): "
-    _GET_USER_PROMPT = "Enter username for database '{}': "
 
     def __init__(self, server, database, instance=None, driver=None,
                  trusted_connection=None, **kwargs):
@@ -366,14 +363,7 @@ class BaseConnectionAttributes(BaseSQLHelper):
         if self.trusted_connection:
             self.trusted_connection = self.trusted_connection.lower()
 
-        # TODO: Single Responsibility principle move this and the method to its own class
-        self.username = kwargs.get('username', None)
-        if not self.username:
-            self.username = self.get_user_or_pass('user')
-
-        self._password = kwargs.get('password', None)
-        if not self._password and not self.trusted_connection or self.trusted_connection == 'no':
-            self._password = self.get_user_or_pass('pass')
+        self.username, self._password = self._get_userpass(**kwargs)
 
         self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
 
@@ -475,31 +465,26 @@ class BaseConnectionAttributes(BaseSQLHelper):
                                                          key_value_split_char)
         return cls(**cxn_attrs, **kwargs)
 
-    def get_user_or_pass(self, mode='user'):
-        all_modes = ['user', 'pass', 'password', 'username']
-        user_modes = ['user', 'username']
-        password_modes = ['pass', 'password']
-
-        user_prompt = self.__class__._GET_USER_PROMPT.format(self.database)
-        password_prompt = self.__class__._GET_PASS_PROMPT.format(self.username)
-        if mode not in all_modes:
-            raise InvalidInputMode()
-        while True:
-            if mode in password_modes:
-                prompt = getpass(password_prompt)
-            elif mode in user_modes:
-                prompt = input(user_prompt)
-            else:
-                raise InvalidInputMode()
-
-            if prompt:
-                break
-            elif prompt.lower() == 'q':
-                print("quitting, goodbye")
-                exit()
-            else:
-                self._logger.warning(f"{mode} cannot be empty")
-        return prompt
+    def _get_userpass(self, **kwargs):
+        """
+        :param kwargs: Dictionary containing optional username and password parameters.
+                       May also include additional parameters for `get_user_pass` method calls.
+        :type kwargs: dict
+        :return: A tuple containing the username and password. If not provided in kwargs,
+                 they are retrieved using the `UserPassInput.get_user_pass` method.
+        :rtype: tuple
+        """
+        self.username = kwargs.get('username', None)
+        self._password = kwargs.get('password', None)
+        if not self.username:
+            self.username = UserPassInput.get_user_pass(database=self.database,
+                                                        trusted_connection=self.trusted_connection,
+                                                        **kwargs)
+        if not self._password:
+            self._password = UserPassInput.get_user_pass(username=self.username,
+                                                         trusted_connection=self.trusted_connection,
+                                                         **kwargs)
+        return self.username, self._password
 
 
 # noinspection PyUnresolvedReferences
