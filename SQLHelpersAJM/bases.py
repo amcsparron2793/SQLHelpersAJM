@@ -2,6 +2,7 @@ from abc import abstractmethod
 from collections import ChainMap
 from typing import Union, Optional, List
 from json import dumps
+import datetime
 
 from SQLHelpersAJM import _SharedLogger
 from SQLHelpersAJM._version import __version__
@@ -834,8 +835,14 @@ class BaseCreateTriggers(_SharedLogger):
         if already_created_counter > 0:
             self._logger.info(f'{already_created_counter} trigger(s) were already present')
 
+    @staticmethod
+    def _serialize_trigger_info(obj):
+        if isinstance(obj, (datetime.date, datetime.datetime)):
+            return obj.isoformat()
+        return obj
+
     def get_all_trigger_info(self, print_info=False, **kwargs):
         self.query(self.__class__._GET_TRIGGER_INFO, silent_process=kwargs.get('silent_process', True))
         if print_info:
-            print(dumps(self.list_dict_results, indent=4, default=str))
+            print(dumps(self.list_dict_results, indent=4, default=self._serialize_trigger_info))
         return self.list_dict_results
