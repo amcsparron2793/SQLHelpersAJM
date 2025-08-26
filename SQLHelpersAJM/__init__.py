@@ -19,8 +19,7 @@ class _SharedLogger:
         if (bcl in logging.getLevelNamesMapping().keys()
                 or bcl in logging.getLevelNamesMapping().values()):
             return bcl
-        else:
-            return False
+        return False
 
     def _get_bcl(self, **kwargs):
         bcl = None

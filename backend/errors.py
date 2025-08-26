@@ -90,4 +90,15 @@ class NoResultsToConvertError(_UseDefaultMessageBase):
 
 
 class InvalidInputMode(_UseDefaultMessageBase):
+    """
+    Represents an exception raised when an invalid input mode is specified.
+
+    This exception is a specialized form of `_UseDefaultMessageBase` and uses
+    a default error message to indicate that the input mode provided is not
+    valid.
+
+    Attributes:
+        DEFAULT_MESSAGE: A string containing the default error message, explaining
+        the reason for the exception.
+    """
     DEFAULT_MESSAGE = "Invalid input mode specified"

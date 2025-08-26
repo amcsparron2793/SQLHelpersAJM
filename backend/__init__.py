@@ -1,13 +1,12 @@
 from getpass import getpass
 import logging
+import functools
+import warnings
 from backend.errors import InvalidInputMode
 
 from backend.errors import MissingRequiredClassAttribute, NoTrackedTablesError, NoCursorInitializedError, \
     NoConnectionInitializedError, NoResultsToConvertError
 from backend.meta import ABCCreateTriggers, ABCPostgresCreateTriggers
-
-import functools
-import warnings
 
 
 def deprecated(reason: str = ""):
@@ -79,6 +78,7 @@ class UserPassInput:
             return cls._get_user_or_pass('user', **kwargs)
         if not _password and untrusted_connection:
             return cls._get_user_or_pass('pass', **kwargs)
+        return None
 
     @classmethod
     def _get_user_or_pass(cls, mode, **kwargs):
@@ -109,7 +109,7 @@ class UserPassInput:
 
                 if prompt:
                     break
-                elif prompt.lower() == 'q':
+                if prompt.lower() == 'q':
                     print("quitting, goodbye")
                     exit()
                 else:
@@ -118,4 +118,3 @@ class UserPassInput:
         except KeyboardInterrupt:
             print("quitting, goodbye")
             exit()
-

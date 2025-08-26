@@ -434,7 +434,13 @@ disable=raw-checker-failed,
         import-error,
         line-too-long,
         missing-module-docstring,
-        invalid-name
+        invalid-name,
+        logging-fstring-interpolation,
+        consider-using-sys-exit,
+        consider-using-f-string,
+        no-member,
+        unnecessary-ellipsis
+
 
 
 

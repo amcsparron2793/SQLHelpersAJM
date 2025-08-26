@@ -188,6 +188,27 @@ class SQLite3Helper(BaseSQLHelper):
 
 
 class SQLite3HelperTT(SQLite3Helper, _SQLite3TableTracker, metaclass=ABCCreateTriggers):
+    """
+    SQLite3HelperTT is a specialized class that combines functionalities from SQLite3Helper and
+    _SQLite3TableTracker while using the ABCCreateTriggers metaclass. The class is designed
+    to provide enhanced management of SQLite3 databases, including table tracking and trigger
+    management, for the specified TABLES_TO_TRACK.
+
+    Attributes:
+        TABLES_TO_TRACK:
+            A list of tables to be tracked within the SQLite database. This is static and predefined.
+
+    Methods:
+        __init__(db_file_path, **kwargs):
+            Initializes the SQLite3HelperTT instance. It sets up the class by invoking initializations
+            from its parent classes SQLite3Helper and _SQLite3TableTracker. The db_file_path argument
+            specifies the path to the SQLite database, and additional keyword arguments can be provided
+            for further customization.
+
+    Properties:
+        __version__:
+            Returns the current version of the SQLite3HelperTT class implementation.
+    """
     TABLES_TO_TRACK = ["test_table"]
     """
     SQLite3HelperTT is a specialized class designed to extend the functionalities of SQLite3Helper,

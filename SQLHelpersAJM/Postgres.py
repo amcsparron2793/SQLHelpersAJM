@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from getpass import getpass
 
 import psycopg
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
@@ -8,6 +7,35 @@ from backend import ABCPostgresCreateTriggers
 
 # noinspection SqlNoDataSourceInspection
 class _PostgresTableTracker(BaseCreateTriggers):
+    """
+    Class for tracking PostgreSQL table changes by creating audit log triggers.
+
+    This class extends functionality to automate the process of adding triggers to PostgreSQL tables for audit logging. It ensures that operations such as insert, update, and delete on specified tables are logged into a dedicated `audit_log` table. The class uses PostgreSQL's trigger functionality and PL/pgSQL functions to facilitate this.
+
+    Attributes:
+        TABLES_TO_TRACK: List of tables that require change tracking. Default includes ignored markers.
+
+        AUDIT_LOG_CREATE_TABLE: SQL query to create the `audit_log` table, which stores the audit data.
+        AUDIT_LOG_CREATED_CHECK: SQL query to check if the `audit_log` table exists.
+        HAS_TRIGGER_CHECK: PL/pgSQL block to check whether a trigger exists on a specific table.
+        GET_COLUMN_NAMES: SQL query to retrieve the column names of a specific table.
+
+        LOG_AFTER_INSERT_FUNC: PL/pgSQL function that logs `INSERT` operations to the `audit_log` table.
+        LOG_AFTER_UPDATE_FUNC: PL/pgSQL function that logs `UPDATE` operations to the `audit_log` table.
+        LOG_AFTER_DELETE_FUNC: PL/pgSQL function that logs `DELETE` operations to the `audit_log` table.
+
+        FUNC_EXISTS_CHECK: SQL query to check for the existence of a specific function within a schema.
+
+        INSERT_TRIGGER: SQL query template to create a `AFTER INSERT` trigger for a specified table.
+        UPDATE_TRIGGER: SQL query template to create a `AFTER UPDATE` trigger for a specified table.
+        DELETE_TRIGGER: SQL query template to create a `AFTER DELETE` trigger for a specified table.
+
+        _GET_TRIGGER_INFO: SQL query to retrieve metadata and details of triggers in the database.
+
+    Methods:
+        _connect:
+            Abstract method placeholder for defining database connection logic in derived classes.
+    """
     TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
 
     AUDIT_LOG_CREATE_TABLE = """CREATE TABLE audit_log (
@@ -139,6 +167,51 @@ class _PostgresTableTracker(BaseCreateTriggers):
 
 
 class PostgresHelper(BaseConnectionAttributes):
+    """
+    PostgresHelper class provides utility functions to interact with a PostgreSQL database.
+    It allows managing schema choices, constructing schema-aware SQL queries,
+    and handling connections securely.
+
+    Attributes:
+        _INSTANCE_DEFAULT: Stores the default instance identifier for connections.
+        _DEFAULT_PORT: The default port used to connect to PostgreSQL instances.
+        VALID_SCHEMA_CHOICES_QUERY: SQL query to fetch valid schema choices.
+        _DEFAULT_SCHEMA_CHOICE: The default schema choice used when no schema is explicitly specified.
+
+    Methods:
+        __init__(server, database, **kwargs):
+            Initializes the PostgresHelper object, setting up server and database connection details,
+            along with any additional configuration passed via kwargs.
+
+        __version__:
+            Returns the version of the current PostgresHelper utility as a property.
+
+        initialize_schema_choices(**kwargs):
+            Initializes the schema choices by establishing a database connection
+            and assigning a schema choice based on the provided arguments or default.
+
+        _connect():
+            Establishes a connection to the PostgreSQL database using provided credentials.
+            Logs the output to notify upon successful connection.
+
+        _add_schema_to_query(sql_string: str):
+            Adds a schema to SQL queries if not already present in the query.
+            Ensures schema-awareness for subsequent query executions.
+
+        query(sql_string: str, **kwargs):
+            Executes a SQL query, adding schema where necessary. Extends the `query` method
+            from the base class to ensure schema information is incorporated.
+
+        valid_schema_choices:
+            Property that retrieves valid schema choices from the database
+            using the predefined `VALID_SCHEMA_CHOICES_QUERY`.
+            Caches the results for subsequent accesses.
+
+        schema_choice:
+            Property to get or set the current schema choice.
+            Setting a schema validates it against `valid_schema_choices`
+            to ensure it is a recognized schema. Raises a ValueError for invalid choices.
+    """
     _INSTANCE_DEFAULT = None
     _DEFAULT_PORT = 5432
     VALID_SCHEMA_CHOICES_QUERY = """SELECT schema_name FROM information_schema.schemata;"""
@@ -159,11 +232,25 @@ class PostgresHelper(BaseConnectionAttributes):
         return "0.1"
 
     def initialize_schema_choices(self, **kwargs):
+        """
+        Initializes schema choices for the current instance.
+
+        :param kwargs: Optional keyword arguments. It may include 'schema_choice' to specify the schema choice. If not provided, the default schema choice will be used.
+        :type kwargs: dict
+        :return: None
+        :rtype: None
+        """
         self.get_connection_and_cursor()
         self.schema_choice = kwargs.get('schema_choice', self.__class__._DEFAULT_SCHEMA_CHOICE)
         self._force_connection_closed()
 
     def _connect(self):
+        """
+        Establishes a connection to a PostgreSQL database using the configured server, port, database name, username, and password. Logs messages indicating the status of the connection process.
+
+        :return: A connection object to the PostgreSQL database
+        :rtype: psycopg.Connection
+        """
         cxn_params = {'host': self.server,
                       'port': self.port,
                       'dbname': self.database,
@@ -176,6 +263,12 @@ class PostgresHelper(BaseConnectionAttributes):
         return cxn
 
     def _add_schema_to_query(self, sql_string: str):
+        """
+        :param sql_string: The SQL query string that potentially lacks schema information and needs to be processed.
+        :type sql_string: str
+        :return: The updated SQL query string with the schema added if it wasn't already specified.
+        :rtype: str
+        """
         from_statements = [x.strip() for x in sql_string.lower().split('from')][-1].split(',')
         has_schema = [x for x in from_statements if x.find('.') != -1]
         if has_schema:
@@ -187,10 +280,28 @@ class PostgresHelper(BaseConnectionAttributes):
         return sql_string
 
     def query(self, sql_string: str, **kwargs):
+        """
+        :param sql_string: The SQL query string that needs to be executed.
+        :type sql_string: str
+        :param kwargs: Additional keyword arguments that may be required for the query execution.
+        :return: The result of executing the modified SQL query.
+        :rtype: Any
+        """
         super().query(self._add_schema_to_query(sql_string), **kwargs)
 
     @property
     def valid_schema_choices(self):
+        """
+        Returns the valid schema choices after querying the database if not already set.
+
+        The method checks if `_valid_schema_choices` is empty. If it is, a database query
+        is executed using the `VALID_SCHEMA_CHOICES_QUERY` constant. The results of the
+        query are processed, and the first element of each result is extracted to form
+        the list of valid schema choices, which is then cached in `_valid_schema_choices`.
+
+        :return: The list of valid schema choices.
+        :rtype: list
+        """
         if not self._valid_schema_choices:
             self.query(self.__class__.VALID_SCHEMA_CHOICES_QUERY, silent_process=True)
             if self.query_results:
@@ -199,10 +310,19 @@ class PostgresHelper(BaseConnectionAttributes):
 
     @property
     def schema_choice(self):
+        """
+        :return: The current value of the _schema_choice attribute.
+        :rtype: Any
+        """
         return self._schema_choice
 
     @schema_choice.setter
     def schema_choice(self, value):
+        """
+        :param value: The schema choice to be set. This value must exist within the valid_schema_choices list.
+        :type value: str
+        :raises ValueError: If the provided value is not within the valid_schema_choices list.
+        """
         if value in self.valid_schema_choices:
             self._schema_choice = value
         else:
@@ -211,6 +331,16 @@ class PostgresHelper(BaseConnectionAttributes):
 
 
 class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostgresCreateTriggers):
+    """
+        A helper class that extends `PostgresHelper` and `_PostgresTableTracker`,
+        implementing trigger creation functionality via a metaclass.
+
+        This class leverages PostgreSQL for database operations and provides
+        functionality to track specified tables, check for the existence of certain
+        stored functions, and create them if necessary. It also includes utilities
+        for auto-generation and tracking of stored function names based on specific
+        class attributes.
+    """
     TABLES_TO_TRACK = ['test_table']
     _ATTR_SUFFIX = '_FUNC'
     _ATTR_PREFIX = 'LOG_AFTER_'
@@ -233,21 +363,54 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
 
     @classmethod
     def _format_func_name(cls, name: str):
+        """
+        Formats a given function name by removing the class attribute suffix and converting it to lowercase.
+
+        :param name: The name of the function to be formatted.
+        :type name: str
+        :return: The formatted function name in lowercase without the class attribute suffix.
+        :rtype: str
+        """
         return ''.join(name.split(cls._ATTR_SUFFIX)[0].lower())  # + '()'
 
     @classmethod
     def _is_func_attr(cls, name):
+        """
+        Checks if a given attribute name is a valid function attribute by verifying
+        if it starts and ends with predefined class-specific prefixes and suffixes.
+
+        :param name: The attribute name to check.
+        :type name: str
+        :return: True if the name matches the function attribute criteria, otherwise False.
+        :rtype: bool
+        """
         return (name.startswith(cls._ATTR_PREFIX)
                 and name.endswith(cls._ATTR_SUFFIX))
 
     @classmethod
     def _get_func_exists_check_str(cls, func_name, schema_choice):
+        """
+        :param func_name: The name of the function to be checked for existence.
+        :type func_name: str
+        :param schema_choice: The name of the schema in which the function existence is to be checked.
+        :type schema_choice: str
+        :return: A formatted string for checking the existence of the provided function within the specified schema.
+        :rtype: str
+        """
         return cls.FUNC_EXISTS_CHECK.format(
             **{cls._FUNC_EXISTS_PLACEHOLDER_FN: func_name,
                cls._FUNC_EXISTS_PLACEHOLDER_SCHEMA: schema_choice}
         )
 
     def _check_or_create_functions(self, **kwargs):
+        """
+        :param kwargs:
+            Dictionary of keyword arguments. Includes:
+                - schema_choice: The schema choice to be used for function creation or existence check;
+                  defaults to the class-level _DEFAULT_SCHEMA_CHOICE if not provided.
+        :return: None
+        :rtype: None
+        """
         schema_choice = kwargs.get('schema_choice', self.__class__._DEFAULT_SCHEMA_CHOICE)
         for f in self._psql_function_attrs_func_name:
             sql_q = self._get_func_exists_check_str(
