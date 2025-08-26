@@ -87,3 +87,7 @@ class NoResultsToConvertError(_UseDefaultMessageBase):
     """
     DEFAULT_MESSAGE = ("A query has not been executed, "
                        "please execute a query before calling this method.")
+
+
+class InvalidInputMode(_UseDefaultMessageBase):
+    DEFAULT_MESSAGE = "Invalid input mode specified"

@@ -173,7 +173,7 @@ class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCr
 
 if __name__ == '__main__':
     # noinspection SpellCheckingInspection
-    gis_prod_connection_string = ("server=10NE-WTR44;trusted_connection=yes;"
-                                  f"database=AndrewTest;username=sa;password={None}")
+    gis_prod_connection_string = ("server=10NE-WTR44;trusted_connection=no;"
+                                  f"database=AndrewTest")#;username=sa;password={None}")
     sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
     sql_srv.get_all_trigger_info(print_info=True)

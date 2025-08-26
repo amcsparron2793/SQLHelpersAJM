@@ -143,7 +143,6 @@ class PostgresHelper(BaseConnectionAttributes):
     _DEFAULT_PORT = 5432
     VALID_SCHEMA_CHOICES_QUERY = """SELECT schema_name FROM information_schema.schemata;"""
     _DEFAULT_SCHEMA_CHOICE = 'public'
-    _GET_PASS_PROMPT = "Enter password for database user '{}' (no output will show on screen): "
 
     def __init__(self, server, database, **kwargs):
         self.instance = kwargs.get('instance', self.__class__._INSTANCE_DEFAULT)
@@ -151,17 +150,11 @@ class PostgresHelper(BaseConnectionAttributes):
         super().__init__(server, database,
                          instance=self.instance, **kwargs)
 
-        self.port = kwargs.get('port', self.__class__._DEFAULT_PORT)
-        self.username = kwargs.get('username', '')
-        self._password = kwargs.get('password',
-                                    None)
-        if not self._password:
-            self._password = getpass(self.__class__._GET_PASS_PROMPT.format(self.username))
-
         self._valid_schema_choices = None
         self._schema_choice = None
         self.initialize_schema_choices(**kwargs)
 
+    @property
     def __version__(self):
         return "0.1"
 
@@ -234,6 +227,7 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
                                                in self.__dir__() if self.__class__._is_func_attr(x)]
         self._check_or_create_functions()
 
+    @property
     def __version__(self):
         return "0.1"
 
@@ -269,5 +263,5 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
 
 if __name__ == '__main__':
     pg = PostgresHelperTT('192.168.1.7',  # port=5432,
-                          database='postgres',
-                          username='postgres')
+                          database='postgres')#,
+                          #username='postgres')
