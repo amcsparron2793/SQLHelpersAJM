@@ -2,8 +2,9 @@ import sqlite3
 from abc import abstractmethod
 from typing import Union
 from pathlib import Path
-from SQLHelpersAJM import BaseSQLHelper, BaseCreateTriggers
-from backend import ABCCreateTriggers, NoTrackedTablesError
+from SQLHelpersAJM.helpers.bases import BaseSQLHelper, BaseCreateTriggers
+from SQLHelpersAJM.backend.meta import ABCCreateTriggers
+from SQLHelpersAJM.backend.errors import NoTrackedTablesError
 
 
 class _SQLite3TableTracker(BaseCreateTriggers):

@@ -1,8 +1,9 @@
 from abc import abstractmethod
 
 import psycopg
-from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
-from backend import ABCPostgresCreateTriggers, NoTrackedTablesError
+from SQLHelpersAJM.helpers.bases import BaseConnectionAttributes, BaseCreateTriggers
+from SQLHelpersAJM.backend.meta import ABCPostgresCreateTriggers
+from SQLHelpersAJM.backend.errors import NoTrackedTablesError
 
 
 # noinspection SqlNoDataSourceInspection

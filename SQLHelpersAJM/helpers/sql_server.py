@@ -3,8 +3,9 @@
 from abc import abstractmethod
 
 import pyodbc
-from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
-from backend import ABCCreateTriggers, NoTrackedTablesError
+from SQLHelpersAJM.helpers.bases import BaseConnectionAttributes, BaseCreateTriggers
+from SQLHelpersAJM.backend.errors import NoTrackedTablesError
+from SQLHelpersAJM.backend.meta import ABCCreateTriggers
 
 
 # noinspection SqlResolve,SqlIdentifier
@@ -178,8 +179,8 @@ class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCr
 if __name__ == '__main__':
     # noinspection SpellCheckingInspection
     gis_prod_connection_string = ("server=10NE-WTR44;trusted_connection=yes;"
-                                  f"database=AndrewTest;username=sa;password={None}")
-    #SQLServerHelperTT.TABLES_TO_TRACK = ['gisprod']
+                                  f"database=gisprod;username=sa;password={None}")
+    SQLServerHelperTT.TABLES_TO_TRACK = ['gisprod']
     sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
     print(sql_srv)
     sql_srv.get_all_trigger_info(print_info=True)

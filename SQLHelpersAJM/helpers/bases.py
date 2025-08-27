@@ -6,8 +6,9 @@ import datetime
 
 from SQLHelpersAJM import _SharedLogger
 from SQLHelpersAJM._version import __version__
-from backend import deprecated, NoCursorInitializedError, NoResultsToConvertError, NoTrackedTablesError, \
-    MissingRequiredClassAttribute, UserPassInput
+from SQLHelpersAJM.backend import deprecated, UserPassInput
+from SQLHelpersAJM.backend.errors import NoCursorInitializedError, NoResultsToConvertError, NoTrackedTablesError, \
+    MissingRequiredClassAttribute
 
 
 class BaseSQLHelper(_SharedLogger):

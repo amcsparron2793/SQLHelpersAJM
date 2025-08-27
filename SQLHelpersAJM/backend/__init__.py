@@ -2,11 +2,8 @@ from getpass import getpass
 import logging
 import functools
 import warnings
-from backend.errors import InvalidInputMode
-
-from backend.errors import MissingRequiredClassAttribute, NoTrackedTablesError, NoCursorInitializedError, \
-    NoConnectionInitializedError, NoResultsToConvertError
-from backend.meta import ABCCreateTriggers, ABCPostgresCreateTriggers
+from . import errors
+from . import meta
 
 
 def deprecated(reason: str = ""):
@@ -97,7 +94,7 @@ class UserPassInput:
         user_prompt = cls.GET_USER_PROMPT.format(database)
         password_prompt = cls.GET_PASS_PROMPT.format(username)
         if mode not in cls.ALL_MODES:
-            raise InvalidInputMode()
+            raise errors.InvalidInputMode()
         try:
             while True:
                 if mode in cls.PASSWORD_MODES:
@@ -105,7 +102,7 @@ class UserPassInput:
                 elif mode in cls.USER_MODES:
                     prompt = input(user_prompt)
                 else:
-                    raise InvalidInputMode()
+                    raise errors.InvalidInputMode()
 
                 if prompt:
                     break
@@ -118,3 +115,6 @@ class UserPassInput:
         except KeyboardInterrupt:
             print("quitting, goodbye")
             exit()
+
+
+__all__ = ['meta', 'errors', 'deprecated', 'UserPassInput']
