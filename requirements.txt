@@ -3,7 +3,7 @@ colorama==0.4.6
 packaging==25
 pyproject_hooks==1.1.0
 setuptools==78.1.1
-
+twine==6.1.0
 pyodbc~=5.2.0
 # pip install "psycopg[binary,pool]"  # to install package and dependencies
-psycopg~=3.2.9
+psycopg[binary,pool]~=3.2.9
