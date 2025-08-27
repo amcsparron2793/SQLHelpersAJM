@@ -1,5 +1,5 @@
 import unittest
-from SQLHelpersAJM.SQLite3_helper import SQLite3Helper
+from SQLHelpersAJM.sqlite3_helper import SQLite3Helper
 from sqlite3 import OperationalError, IntegrityError
 from pathlib import Path
 from logging import warning

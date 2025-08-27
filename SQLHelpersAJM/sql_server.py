@@ -4,7 +4,7 @@ from abc import abstractmethod
 
 import pyodbc
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
-from backend import ABCCreateTriggers
+from backend import ABCCreateTriggers, NoTrackedTablesError
 
 
 # noinspection SqlResolve,SqlIdentifier
@@ -160,11 +160,15 @@ class SQLServerHelperTT(SQLServerHelper, _SQLServerTableTracker, metaclass=ABCCr
         __init__: Initializes the SQLServerHelperTT object, calling the constructors of SQLServerHelper and _SQLServerTableTracker.
         __version__: A property that returns the current version of the class.
     """
-    TABLES_TO_TRACK = []
 
     def __init__(self, server, database, **kwargs):
         super().__init__(server, database, **kwargs)
         _SQLServerTableTracker.__init__(self, **kwargs)
+
+    def __new__(cls, *args, **kwargs):
+        if cls.TABLES_TO_TRACK == [cls._MAGIC_IGNORE_STRING]:
+            raise NoTrackedTablesError(class_name=cls.__name__)
+        return super().__new__(cls)
 
     @property
     def __version__(self):
@@ -175,5 +179,7 @@ if __name__ == '__main__':
     # noinspection SpellCheckingInspection
     gis_prod_connection_string = ("server=10NE-WTR44;trusted_connection=yes;"
                                   f"database=AndrewTest;username=sa;password={None}")
+    #SQLServerHelperTT.TABLES_TO_TRACK = ['gisprod']
     sql_srv = SQLServerHelperTT.with_connection_string(gis_prod_connection_string)#, basic_config_level='DEBUG')
+    print(sql_srv)
     sql_srv.get_all_trigger_info(print_info=True)

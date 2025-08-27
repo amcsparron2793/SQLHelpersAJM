@@ -533,6 +533,8 @@ class BaseCreateTriggers(_SharedLogger):
 
     _MAGIC_IGNORE_STRING = 'not a value'
     _GET_TRIGGER_INFO = None
+    _TABLE_TRACKER_PREFIX = '_'
+    _TABLE_TRACKER_SUFFIX = 'TableTracker'
 
     def __init__(self, **kwargs):
         self._cursor = None
@@ -558,10 +560,7 @@ class BaseCreateTriggers(_SharedLogger):
                                      and not cls.is_table_tracker_class())
 
         if is_missing_tracked_tables:
-            raise NoTrackedTablesError()
-        # if (not cls.has_tracked_tables()
-        #         and not cls.is_table_tracker_class()):
-        #     raise NoTrackedTablesError()
+            raise NoTrackedTablesError(class_name=cls.__name__)
 
     def audit_log_table_init(self):
         """
@@ -647,8 +646,13 @@ class BaseCreateTriggers(_SharedLogger):
         :rtype: bool
 
         """
-        return (cls.__name__.startswith('_')
-                and cls.__name__.endswith('TableTracker'))
+        return (((cls.__name__.startswith(cls._TABLE_TRACKER_PREFIX)
+                and cls.__name__.endswith(cls._TABLE_TRACKER_SUFFIX))
+                 or cls.is_helper_base_class()))
+
+    @classmethod
+    def is_helper_base_class(cls):
+        return cls.__name__.endswith('HelperTT')
 
     @property
     def has_required_class_attributes(self):

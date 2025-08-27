@@ -2,7 +2,7 @@ from abc import abstractmethod
 
 import psycopg
 from SQLHelpersAJM import BaseConnectionAttributes, BaseCreateTriggers
-from backend import ABCPostgresCreateTriggers
+from backend import ABCPostgresCreateTriggers, NoTrackedTablesError
 
 
 # noinspection SqlNoDataSourceInspection
@@ -341,7 +341,6 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
         for auto-generation and tracking of stored function names based on specific
         class attributes.
     """
-    TABLES_TO_TRACK = ['test_table']
     _ATTR_SUFFIX = '_FUNC'
     _ATTR_PREFIX = 'LOG_AFTER_'
     _FUNC_EXISTS_PLACEHOLDER_FN = 'function_name'
@@ -356,6 +355,11 @@ class PostgresHelperTT(PostgresHelper, _PostgresTableTracker, metaclass=ABCPostg
         self._psql_function_attrs_func_name = [(x, self.__class__._format_func_name(x)) for x
                                                in self.__dir__() if self.__class__._is_func_attr(x)]
         self._check_or_create_functions()
+
+    def __new__(cls, *args, **kwargs):
+        if cls.TABLES_TO_TRACK == [cls._MAGIC_IGNORE_STRING]:
+            raise NoTrackedTablesError(class_name=cls.__name__)
+        return super().__new__(cls)
 
     @property
     def __version__(self):

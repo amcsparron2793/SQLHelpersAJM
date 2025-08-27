@@ -48,8 +48,13 @@ class NoTrackedTablesError(_UseDefaultMessageBase):
         DEFAULT_MESSAGE: Default error message to describe the issue of missing
                          tracked tables.
     """
-    DEFAULT_MESSAGE = ("No tables have been specified to track. "
+    DEFAULT_MESSAGE = ("No tables have been specified to track in {class_name}. "
                        "Please specify tables to track in the TABLES_TO_TRACK class variable.")
+
+    def __init__(self, msg: str = None, **kwargs):
+        if not msg:
+            msg = self.__class__.DEFAULT_MESSAGE.format(class_name=kwargs.get('class_name', 'UnknownClass'))
+        super().__init__(msg)
 
 
 class NoCursorInitializedError(_UseDefaultMessageBase):

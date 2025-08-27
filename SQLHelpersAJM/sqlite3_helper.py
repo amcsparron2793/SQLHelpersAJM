@@ -3,7 +3,7 @@ from abc import abstractmethod
 from typing import Union
 from pathlib import Path
 from SQLHelpersAJM import BaseSQLHelper, BaseCreateTriggers
-from backend import ABCCreateTriggers
+from backend import ABCCreateTriggers, NoTrackedTablesError
 
 
 class _SQLite3TableTracker(BaseCreateTriggers):
@@ -29,6 +29,7 @@ class _SQLite3TableTracker(BaseCreateTriggers):
     Methods:
         _connect: Abstract method to be implemented by subclasses. It is expected to establish and return a connection to the SQLite database.
     """
+    # MAGIC IGNORE STRING is used so that a type error is not thrown for an undefined attribute
     TABLES_TO_TRACK = [BaseCreateTriggers._MAGIC_IGNORE_STRING]
     AUDIT_LOG_CREATE_TABLE = """create table audit_log
                                         (
@@ -209,23 +210,15 @@ class SQLite3HelperTT(SQLite3Helper, _SQLite3TableTracker, metaclass=ABCCreateTr
         __version__:
             Returns the current version of the SQLite3HelperTT class implementation.
     """
-    TABLES_TO_TRACK = ["test_table"]
-    """
-    SQLite3HelperTT is a specialized class designed to extend the functionalities of SQLite3Helper,
-    support table tracking with _SQLlite3TableTracker, and integrate trigger management using the ABCCreateTriggers metaclass.
 
-    Methods:
-        __init__(db_file_path, **kwargs):
-            Initializes the class by combining the initialization processes of SQLite3Helper and _SQLlite3TableTracker.
-            db_file_path specifies the path to the SQLite database file, and additional options can be passed through **kwargs.
-
-    Properties:
-        __version__:
-            Returns the version string of the class implementation.
-    """
     def __init__(self, db_file_path: Union[str, Path], **kwargs):
         super().__init__(db_file_path, **kwargs)
         _SQLite3TableTracker.__init__(self, **kwargs)
+
+    def __new__(cls, *args, **kwargs):
+        if cls.TABLES_TO_TRACK == [cls._MAGIC_IGNORE_STRING]:
+            raise NoTrackedTablesError(class_name=cls.__name__)
+        return super().__new__(cls)
 
     @property
     def __version__(self):
@@ -237,14 +230,3 @@ if __name__ == "__main__":
     # sql = SQLlite3Helper(db_file_path=junk_db_filepath)
     sql_tt = SQLite3HelperTT(db_file_path=junk_db_filepath)
     sql_tt.get_all_trigger_info(print_info=True)
-
-    # sql_tt.query("insert into test_table(name, age) VALUES ('andrew', 32) returning id;", is_commit=True)
-    # sql_tt.query("select * from audit_log;", is_commit=False)
-    #print(sql_tt.query_results)
-    #print(sql.class_attr_list)
-    #print(sql.required_class_attributes)
-    #sql.get_connection_and_cursor()
-    #sql.query("drop table test_table;", is_commit=True)
-    #sql_tt.query("create table test_table (id integer primary key autoincrement, name varchar(255), age integer);", is_commit=True)
-    #sql.query("select * from test_table;", is_commit=False)
-    #print(sql.query_results)
