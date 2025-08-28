@@ -2,7 +2,7 @@ import logging
 from logging import getLogger, basicConfig, INFO, Logger
 from typing import Optional
 
-
+# FIXME: MAKE SURE SQLHELPERSAJM doesn't reinitialize the logger when it doesnt need to!!!!
 class _SharedLogger:
     """
     Class for managing shared logger instances.
